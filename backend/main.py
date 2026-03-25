@@ -17,13 +17,18 @@ from models import (
     Task,
     TaskCreate,
     TaskStatusUpdate,
+    TaskTerminal,
     create_repo_group,
     create_task,
+    create_terminal,
     delete_repo_group,
     delete_task,
+    delete_terminal,
     get_all_repo_groups,
     get_all_tasks,
     get_task,
+    get_terminal,
+    get_terminals_for_task,
     init_db,
     update_repo_group,
     update_task,
@@ -161,8 +166,8 @@ def remove_task(task_id: str):
     task = get_task(task_id)
     if not task:
         raise HTTPException(404, "Task not found")
-    if task.ghostty_pid:
-        ghostty_manager.kill(task.ghostty_pid)
+    for term in get_terminals_for_task(task_id):
+        ghostty_manager.kill(term.pid)
     par_manager.workspace_rm(task.par_label)
     delete_task(task_id)
     return {"ok": True}
@@ -179,32 +184,69 @@ def agent_status(task_id: str) -> dict:
     return {"running": "droid" in cmd.lower(), "command": cmd}
 
 
-@app.post("/api/tasks/{task_id}/focus")
-def focus_task(task_id: str) -> dict:
+@app.get("/api/tasks/{task_id}/terminals")
+def list_terminals(task_id: str) -> list[TaskTerminal]:
     task = get_task(task_id)
     if not task:
         raise HTTPException(404, "Task not found")
-    if not task.tmux_session:
-        raise HTTPException(400, "Task has no tmux session")
+    terminals = get_terminals_for_task(task_id)
+    for t in terminals:
+        if not ghostty_manager.is_alive(t.pid):
+            t.pid = 0
+    return terminals
 
-    if task.ghostty_pid and ghostty_manager.is_alive(task.ghostty_pid):
-        ghostty_manager.focus()
+
+@app.post("/api/tasks/{task_id}/terminals", status_code=201)
+def add_terminal(task_id: str) -> TaskTerminal:
+    task = get_task(task_id)
+    if not task:
+        raise HTTPException(404, "Task not found")
+    ws_path = par_manager.get_workspace_path(task.par_label)
+    if not ws_path:
+        raise HTTPException(400, "Workspace directory not found")
+    pid = ghostty_manager.launch_shell(ws_path, task.title, task.color_fg, task.color_bg)
+    return create_terminal(task_id, pid, kind="shell")
+
+
+@app.post("/api/tasks/{task_id}/terminals/{terminal_id}/focus")
+def focus_terminal(task_id: str, terminal_id: str) -> dict:
+    task = get_task(task_id)
+    if not task:
+        raise HTTPException(404, "Task not found")
+    term = get_terminal(terminal_id)
+    if not term or term.task_id != task_id:
+        raise HTTPException(404, "Terminal not found")
+    if ghostty_manager.is_alive(term.pid):
+        ghostty_manager.focus_by_title(task.title)
     else:
-        pid = ghostty_manager.launch(
-            task.tmux_session, task.title, task.color_fg, task.color_bg,
-        )
-        update_task(task_id, ghostty_pid=pid)
+        if term.kind == "original":
+            if not task.tmux_session:
+                raise HTTPException(400, "Task has no tmux session")
+            pid = ghostty_manager.launch(
+                task.tmux_session, task.title, task.color_fg, task.color_bg,
+            )
+        else:
+            ws_path = par_manager.get_workspace_path(task.par_label)
+            if not ws_path:
+                raise HTTPException(400, "Workspace directory not found")
+            pid = ghostty_manager.launch_shell(ws_path, task.title, task.color_fg, task.color_bg)
+        delete_terminal(terminal_id)
+        create_terminal(task_id, pid, kind=term.kind)
     return {"ok": True}
 
 
-@app.post("/api/tasks/{task_id}/new-terminal")
-def new_terminal(task_id: str) -> dict:
+@app.delete("/api/tasks/{task_id}/terminals/{terminal_id}")
+def remove_terminal(task_id: str, terminal_id: str) -> dict:
     task = get_task(task_id)
     if not task:
         raise HTTPException(404, "Task not found")
-    if not task.tmux_session:
-        raise HTTPException(400, "Task has no tmux session")
-    ghostty_manager.launch(task.tmux_session, task.title, task.color_fg, task.color_bg)
+    term = get_terminal(terminal_id)
+    if not term or term.task_id != task_id:
+        raise HTTPException(404, "Terminal not found")
+    if term.kind == "original":
+        raise HTTPException(400, "Cannot delete the original terminal")
+    ghostty_manager.kill(term.pid)
+    delete_terminal(terminal_id)
     return {"ok": True}
 
 
@@ -214,14 +256,17 @@ def _transition_to_in_progress(task: Task):
 
     pid = ghostty_manager.launch(tmux_session, task.title, task.color_fg, task.color_bg)
     update_task(task.id, ghostty_pid=pid)
+    create_terminal(task.id, pid, kind="original")
 
 
 def _transition_to_done(task: Task):
+    for term in get_terminals_for_task(task.id):
+        ghostty_manager.kill(term.pid)
+        delete_terminal(term.id)
     if task.ghostty_pid:
-        ghostty_manager.kill(task.ghostty_pid)
         update_task(task.id, ghostty_pid=None)
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8420, reload=True)

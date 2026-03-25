@@ -22,6 +22,20 @@ def launch(tmux_session: str, title: str, color_fg: str, color_bg: str) -> int:
     return proc.pid
 
 
+def launch_shell(working_dir: str, title: str, color_fg: str, color_bg: str) -> int:
+    """Launch a standalone Ghostty window in a directory. Returns the PID."""
+    cmd = [
+        GHOSTTY_PATH,
+        f"--title={title}",
+        f"--background={color_bg}",
+        f"--foreground={color_fg}",
+        f"--working-directory={working_dir}",
+    ]
+    log.info("Launching Ghostty shell: %s", " ".join(cmd))
+    proc = subprocess.Popen(cmd, start_new_session=True)
+    return proc.pid
+
+
 def is_alive(pid: int) -> bool:
     """Check if a process with the given PID is still running."""
     if pid is None:
@@ -33,12 +47,21 @@ def is_alive(pid: int) -> bool:
         return False
 
 
-def focus():
-    """Bring the Ghostty app to the foreground via AppleScript."""
-    subprocess.run(
-        ["osascript", "-e", 'tell application "Ghostty" to activate'],
-        check=False,
+def focus_by_title(title: str):
+    """Bring all Ghostty windows whose title contains *title* to the front."""
+    script = (
+        'tell application "System Events"\n'
+        '  tell process "Ghostty"\n'
+        '    set frontmost to true\n'
+        '    repeat with w in windows\n'
+        f'      if name of w contains "{title}" then\n'
+        '        perform action "AXRaise" of w\n'
+        '      end if\n'
+        '    end repeat\n'
+        '  end tell\n'
+        'end tell'
     )
+    subprocess.run(["osascript", "-e", script], check=False)
 
 
 def kill(pid: int):

@@ -1,4 +1,4 @@
-import type { AgentStatus, RepoGroup, Task, TaskStatus } from './types';
+import type { AgentStatus, RepoGroup, Task, TaskStatus, TaskTerminal } from './types';
 
 const BASE = '/api';
 
@@ -37,11 +37,17 @@ export const api = {
   getAgentStatus: (id: string) =>
     request<AgentStatus>(`/tasks/${id}/agent-status`),
 
-  focusTask: (id: string) =>
-    request<{ ok: boolean }>(`/tasks/${id}/focus`, { method: 'POST' }),
+  getTerminals: (taskId: string) =>
+    request<TaskTerminal[]>(`/tasks/${taskId}/terminals`),
 
-  newTerminal: (id: string) =>
-    request<{ ok: boolean }>(`/tasks/${id}/new-terminal`, { method: 'POST' }),
+  addTerminal: (taskId: string) =>
+    request<TaskTerminal>(`/tasks/${taskId}/terminals`, { method: 'POST' }),
+
+  focusTerminal: (taskId: string, terminalId: string) =>
+    request<{ ok: boolean }>(`/tasks/${taskId}/terminals/${terminalId}/focus`, { method: 'POST' }),
+
+  deleteTerminal: (taskId: string, terminalId: string) =>
+    request<{ ok: boolean }>(`/tasks/${taskId}/terminals/${terminalId}`, { method: 'DELETE' }),
 
   pullAllRepos: () =>
     request<{ repo: string; ok: boolean; output: string }[]>('/repos/pull', { method: 'POST' }),

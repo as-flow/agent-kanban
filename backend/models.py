@@ -45,6 +45,14 @@ class RepoGroup(BaseModel):
     created_at: str = ""
 
 
+class TaskTerminal(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    task_id: str
+    pid: int
+    kind: str = "original"  # "original" or "shell"
+    created_at: str = ""
+
+
 class TaskCreate(BaseModel):
     title: str
     repos: list[str]
@@ -88,6 +96,16 @@ def init_db():
             color_bg TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS task_terminals (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            pid INTEGER NOT NULL,
+            kind TEXT NOT NULL DEFAULT 'original',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
         )
     """)
     conn.execute("""
@@ -238,7 +256,54 @@ def update_task(task_id: str, **kwargs) -> Optional[Task]:
 
 def delete_task(task_id: str) -> bool:
     conn = sqlite3.connect(DB_PATH)
+    conn.execute("DELETE FROM task_terminals WHERE task_id = ?", (task_id,))
     cur = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    conn.commit()
+    conn.close()
+    return cur.rowcount > 0
+
+
+# --- Task Terminals ---
+
+def _row_to_terminal(row: sqlite3.Row) -> TaskTerminal:
+    return TaskTerminal(**dict(row))
+
+
+def create_terminal(task_id: str, pid: int, kind: str = "original") -> TaskTerminal:
+    now = _now()
+    term = TaskTerminal(task_id=task_id, pid=pid, kind=kind, created_at=now)
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "INSERT INTO task_terminals (id, task_id, pid, kind, created_at) VALUES (?, ?, ?, ?, ?)",
+        (term.id, term.task_id, term.pid, term.kind, term.created_at),
+    )
+    conn.commit()
+    conn.close()
+    return term
+
+
+def get_terminals_for_task(task_id: str) -> list[TaskTerminal]:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT * FROM task_terminals WHERE task_id = ? ORDER BY created_at",
+        (task_id,),
+    ).fetchall()
+    conn.close()
+    return [_row_to_terminal(r) for r in rows]
+
+
+def get_terminal(terminal_id: str) -> Optional[TaskTerminal]:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT * FROM task_terminals WHERE id = ?", (terminal_id,)).fetchone()
+    conn.close()
+    return _row_to_terminal(row) if row else None
+
+
+def delete_terminal(terminal_id: str) -> bool:
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.execute("DELETE FROM task_terminals WHERE id = ?", (terminal_id,))
     conn.commit()
     conn.close()
     return cur.rowcount > 0

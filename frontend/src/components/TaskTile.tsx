@@ -1,7 +1,7 @@
 import { useDraggable } from '@dnd-kit/core';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
-import type { Task } from '../types';
+import type { Task, TaskTerminal } from '../types';
 
 interface Props {
   task: Task;
@@ -13,11 +13,24 @@ interface Props {
 export function TaskTile({ task, overlay, onRefresh, onError }: Props) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: task.id });
   const [agentRunning, setAgentRunning] = useState(false);
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const [terminals, setTerminals] = useState<TaskTerminal[]>([]);
+
+  const isActive = task.status === 'in_progress' || task.status === 'in_review';
+  const canDelete = task.status === 'done' || task.status === 'not_started';
+
+  const refreshTerminals = useCallback(async () => {
+    if (!isActive) return;
+    try {
+      setTerminals(await api.getTerminals(task.id));
+    } catch { /* ignore */ }
+  }, [task.id, isActive]);
 
   useEffect(() => {
-    if (task.status !== 'in_progress' && task.status !== 'in_review') return;
+    refreshTerminals();
+  }, [refreshTerminals]);
+
+  useEffect(() => {
+    if (!isActive) return;
     let cancelled = false;
     const poll = async () => {
       try {
@@ -31,61 +44,36 @@ export function TaskTile({ task, overlay, onRefresh, onError }: Props) {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [task.id, task.status]);
+  }, [task.id, isActive]);
 
-  const closeMenu = useCallback(() => setCtxMenu(null), []);
-
-  useEffect(() => {
-    if (!ctxMenu) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeMenu();
-    };
-    window.addEventListener('click', closeMenu);
-    window.addEventListener('scroll', closeMenu, true);
-    window.addEventListener('keydown', handleKey);
-    return () => {
-      window.removeEventListener('click', closeMenu);
-      window.removeEventListener('scroll', closeMenu, true);
-      window.removeEventListener('keydown', handleKey);
-    };
-  }, [ctxMenu, closeMenu]);
-
-  function handleContextMenu(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    setCtxMenu({ x: e.clientX, y: e.clientY });
-  }
-
-  async function handleClick() {
-    if (task.status === 'in_progress' || task.status === 'in_review') {
-      try {
-        await api.focusTask(task.id);
-      } catch (e: any) {
-        onError(e.message);
-      }
-    }
-  }
-
-  async function handleNewTerminal() {
-    closeMenu();
+  async function handleFocusTerminal(termId: string) {
     try {
-      await api.newTerminal(task.id);
+      await api.focusTerminal(task.id, termId);
+      await refreshTerminals();
     } catch (e: any) {
       onError(e.message);
     }
   }
 
-  async function handleFocus() {
-    closeMenu();
+  async function handleAddTerminal() {
     try {
-      await api.focusTask(task.id);
+      await api.addTerminal(task.id);
+      await refreshTerminals();
     } catch (e: any) {
       onError(e.message);
     }
   }
 
-  async function handleDelete() {
-    closeMenu();
+  async function handleDeleteTerminal(termId: string) {
+    try {
+      await api.deleteTerminal(task.id, termId);
+      await refreshTerminals();
+    } catch (e: any) {
+      onError(e.message);
+    }
+  }
+
+  async function handleDeleteTask() {
     if (!confirm(`Delete "${task.title}" and its par workspace?`)) return;
     try {
       await api.deleteTask(task.id);
@@ -95,15 +83,10 @@ export function TaskTile({ task, overlay, onRefresh, onError }: Props) {
     }
   }
 
-  const isActive = task.status === 'in_progress' || task.status === 'in_review';
-  const canDelete = task.status === 'done' || task.status === 'not_started';
-
   return (
     <div
       ref={overlay ? undefined : setNodeRef}
       {...(overlay ? {} : { ...attributes, ...listeners })}
-      onClick={handleClick}
-      onContextMenu={overlay ? undefined : handleContextMenu}
       className={`relative rounded-lg border border-gray-700 bg-gray-800 p-3 cursor-grab active:cursor-grabbing transition-shadow hover:shadow-lg ${
         isDragging && !overlay ? 'opacity-30' : ''
       } ${overlay ? 'shadow-2xl rotate-2' : ''}`}
@@ -120,7 +103,7 @@ export function TaskTile({ task, overlay, onRefresh, onError }: Props) {
           )}
           {canDelete && (
             <button
-              onClick={(e) => { e.stopPropagation(); handleDelete(); }}
+              onClick={(e) => { e.stopPropagation(); handleDeleteTask(); }}
               className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer"
               title="Delete task"
             >
@@ -148,40 +131,50 @@ export function TaskTile({ task, overlay, onRefresh, onError }: Props) {
         {task.par_label}
       </div>
 
-      {ctxMenu && (
-        <div
-          ref={menuRef}
-          className="fixed z-[100] min-w-[160px] bg-gray-900 border border-gray-700 rounded-lg shadow-2xl py-1"
-          style={{ left: ctxMenu.x, top: ctxMenu.y }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {isActive && (
-            <>
-              <button
-                onClick={handleNewTerminal}
-                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-800 cursor-pointer"
-              >
-                New Terminal
-              </button>
-              <button
-                onClick={handleFocus}
-                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-800 cursor-pointer"
-              >
-                Focus Terminal
-              </button>
-            </>
-          )}
-          {canDelete && (
+      {isActive && terminals.length > 0 && (
+        <div className="mt-2 border-t border-gray-700 pt-2 space-y-1">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-gray-400">Terminals</span>
             <button
-              onClick={handleDelete}
-              className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-800 cursor-pointer"
+              onClick={(e) => { e.stopPropagation(); handleAddTerminal(); }}
+              className="text-gray-400 hover:text-green-400 transition-colors cursor-pointer"
+              title="New terminal"
             >
-              Delete
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
             </button>
-          )}
-          {!isActive && !canDelete && (
-            <div className="px-4 py-2 text-sm text-gray-500">No actions</div>
-          )}
+          </div>
+          {terminals.map((term, i) => {
+            const alive = term.pid > 0;
+            const label = term.kind === 'original' ? 'Main' : `Shell ${i}`;
+            return (
+              <div
+                key={term.id}
+                className="flex items-center justify-between group text-xs rounded px-1.5 py-1 hover:bg-gray-700/50"
+              >
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleFocusTerminal(term.id); }}
+                  className="flex items-center gap-1.5 text-gray-300 hover:text-white cursor-pointer min-w-0"
+                  title={alive ? 'Focus terminal' : 'Reopen terminal'}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${alive ? 'bg-green-400' : 'bg-gray-600'}`} />
+                  <span className="truncate">{label}</span>
+                </button>
+                {term.kind !== 'original' && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDeleteTerminal(term.id); }}
+                    className="text-gray-600 hover:text-red-400 transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
+                    title="Close terminal"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

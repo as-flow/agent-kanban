@@ -26,6 +26,14 @@ export interface AgentStatus {
   command: string;
 }
 
+export interface TaskTerminal {
+  id: string;
+  task_id: string;
+  pid: number;
+  kind: 'original' | 'shell';
+  created_at: string;
+}
+
 export const COLUMNS: { id: TaskStatus; label: string }[] = [
   { id: 'not_started', label: 'Not Started' },
   { id: 'in_progress', label: 'In Progress' },

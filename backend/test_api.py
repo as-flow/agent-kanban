@@ -45,8 +45,9 @@ def mock_par():
 @pytest.fixture(autouse=True)
 def mock_ghostty():
     ghostty_manager.launch = MagicMock(return_value=12345)
+    ghostty_manager.launch_shell = MagicMock(return_value=12346)
     ghostty_manager.is_alive = MagicMock(return_value=True)
-    ghostty_manager.focus = MagicMock()
+    ghostty_manager.focus_by_title = MagicMock()
     ghostty_manager.kill = MagicMock()
     yield ghostty_manager
 
@@ -122,11 +123,71 @@ def test_agent_status():
     assert resp.json()["running"] is True
 
 
-def test_focus_task_alive(mock_ghostty):
+def test_list_terminals_after_start(mock_ghostty):
+    resp = client.post("/api/tasks", json={"title": "Terminals", "repos": ["r"]})
+    task_id = resp.json()["id"]
+    client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
+
+    resp = client.get(f"/api/tasks/{task_id}/terminals")
+    assert resp.status_code == 200
+    terms = resp.json()
+    assert len(terms) == 1
+    assert terms[0]["kind"] == "original"
+
+
+def test_focus_terminal(mock_ghostty):
     resp = client.post("/api/tasks", json={"title": "Focus", "repos": ["r"]})
     task_id = resp.json()["id"]
     client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
 
-    resp = client.post(f"/api/tasks/{task_id}/focus")
+    terms = client.get(f"/api/tasks/{task_id}/terminals").json()
+    term_id = terms[0]["id"]
+
+    resp = client.post(f"/api/tasks/{task_id}/terminals/{term_id}/focus")
     assert resp.status_code == 200
-    mock_ghostty.focus.assert_called()
+    mock_ghostty.focus_by_title.assert_called()
+
+
+def test_add_terminal(mock_ghostty, mock_par):
+    par_manager.get_workspace_path = MagicMock(return_value="/tmp/ws")
+    resp = client.post("/api/tasks", json={"title": "Add", "repos": ["r"]})
+    task_id = resp.json()["id"]
+    client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
+
+    resp = client.post(f"/api/tasks/{task_id}/terminals")
+    assert resp.status_code == 201
+    assert resp.json()["kind"] == "shell"
+    mock_ghostty.launch_shell.assert_called()
+
+    terms = client.get(f"/api/tasks/{task_id}/terminals").json()
+    assert len(terms) == 2
+
+
+def test_delete_terminal_not_original(mock_ghostty, mock_par):
+    par_manager.get_workspace_path = MagicMock(return_value="/tmp/ws")
+    resp = client.post("/api/tasks", json={"title": "Del", "repos": ["r"]})
+    task_id = resp.json()["id"]
+    client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
+
+    client.post(f"/api/tasks/{task_id}/terminals")
+    terms = client.get(f"/api/tasks/{task_id}/terminals").json()
+    shell_term = [t for t in terms if t["kind"] == "shell"][0]
+
+    resp = client.delete(f"/api/tasks/{task_id}/terminals/{shell_term['id']}")
+    assert resp.status_code == 200
+
+    terms = client.get(f"/api/tasks/{task_id}/terminals").json()
+    assert len(terms) == 1
+    assert terms[0]["kind"] == "original"
+
+
+def test_cannot_delete_original_terminal(mock_ghostty):
+    resp = client.post("/api/tasks", json={"title": "Orig", "repos": ["r"]})
+    task_id = resp.json()["id"]
+    client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
+
+    terms = client.get(f"/api/tasks/{task_id}/terminals").json()
+    orig_id = terms[0]["id"]
+
+    resp = client.delete(f"/api/tasks/{task_id}/terminals/{orig_id}")
+    assert resp.status_code == 400

@@ -1,5 +1,6 @@
 import subprocess
 import logging
+from pathlib import Path
 
 from config import REPOS_DIRECTORY
 
@@ -41,6 +42,17 @@ def discover_tmux_session(label: str) -> str:
         if label in line:
             return line.strip()
     return f"par-ws-{label}"
+
+
+def get_workspace_path(label: str) -> str:
+    """Resolve the par workspace directory for a label."""
+    base = Path.home() / ".local" / "share" / "par" / "workspaces"
+    if base.is_dir():
+        for hash_dir in base.iterdir():
+            candidate = hash_dir / label
+            if candidate.is_dir():
+                return str(candidate)
+    return ""
 
 
 def is_tmux_session_alive(session_name: str) -> bool:

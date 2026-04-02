@@ -1,5 +1,6 @@
 import logging
 import subprocess
+import uuid as _uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -55,8 +56,9 @@ app.add_middleware(
 
 VALID_TRANSITIONS = {
     "not_started": ["in_progress"],
-    "in_progress": ["in_review"],
-    "in_review": ["done"],
+    "in_progress": ["in_review", "on_hold", "done"],
+    "in_review": ["in_progress", "on_hold", "done"],
+    "on_hold": ["in_progress", "in_review", "done"],
     "done": [],
 }
 
@@ -155,10 +157,22 @@ def update_status(task_id: str, body: TaskStatusUpdate) -> Task:
 
     if task.status == "not_started" and new_status == "in_progress":
         _transition_to_in_progress(task)
-    elif task.status == "in_review" and new_status == "done":
+    elif new_status == "done":
         _transition_to_done(task)
 
     return update_task(task_id, status=new_status)
+
+
+@app.delete("/api/tasks/done")
+def remove_done_tasks():
+    all_tasks = get_all_tasks()
+    done_tasks = [t for t in all_tasks if t.status == "done"]
+    for task in done_tasks:
+        for term in get_terminals_for_task(task.id):
+            ghostty_manager.kill(term.pid)
+        par_manager.workspace_rm(task.par_label)
+        delete_task(task.id)
+    return {"ok": True, "deleted": len(done_tasks)}
 
 
 @app.delete("/api/tasks/{task_id}")
@@ -204,8 +218,10 @@ def add_terminal(task_id: str) -> TaskTerminal:
     ws_path = par_manager.get_workspace_path(task.par_label)
     if not ws_path:
         raise HTTPException(400, "Workspace directory not found")
-    pid = ghostty_manager.launch_shell(ws_path, task.title, task.color_fg, task.color_bg)
-    return create_terminal(task_id, pid, kind="shell")
+    short_id = _uuid.uuid4().hex[:6]
+    win_title = f"{task.title} [{short_id}]"
+    pid = ghostty_manager.launch_shell(ws_path, win_title, task.color_fg, task.color_bg)
+    return create_terminal(task_id, pid, kind="shell", title=win_title)
 
 
 @app.post("/api/tasks/{task_id}/terminals/{terminal_id}/focus")
@@ -217,21 +233,22 @@ def focus_terminal(task_id: str, terminal_id: str) -> dict:
     if not term or term.task_id != task_id:
         raise HTTPException(404, "Terminal not found")
     if ghostty_manager.is_alive(term.pid):
-        ghostty_manager.focus_by_title(task.title)
+        ghostty_manager.focus_by_pid(term.pid)
     else:
+        win_title = term.title or (f"{task.title} [main]" if term.kind == "original" else f"{task.title} [{term.id[:6]}]")
         if term.kind == "original":
             if not task.tmux_session:
                 raise HTTPException(400, "Task has no tmux session")
             pid = ghostty_manager.launch(
-                task.tmux_session, task.title, task.color_fg, task.color_bg,
+                task.tmux_session, win_title, task.color_fg, task.color_bg,
             )
         else:
             ws_path = par_manager.get_workspace_path(task.par_label)
             if not ws_path:
                 raise HTTPException(400, "Workspace directory not found")
-            pid = ghostty_manager.launch_shell(ws_path, task.title, task.color_fg, task.color_bg)
+            pid = ghostty_manager.launch_shell(ws_path, win_title, task.color_fg, task.color_bg)
         delete_terminal(terminal_id)
-        create_terminal(task_id, pid, kind=term.kind)
+        create_terminal(task_id, pid, kind=term.kind, title=win_title)
     return {"ok": True}
 
 
@@ -254,9 +271,10 @@ def _transition_to_in_progress(task: Task):
     tmux_session = par_manager.workspace_start(task.par_label, task.repos)
     update_task(task.id, tmux_session=tmux_session)
 
-    pid = ghostty_manager.launch(tmux_session, task.title, task.color_fg, task.color_bg)
+    win_title = f"{task.title} [main]"
+    pid = ghostty_manager.launch(tmux_session, win_title, task.color_fg, task.color_bg)
     update_task(task.id, ghostty_pid=pid)
-    create_terminal(task.id, pid, kind="original")
+    create_terminal(task.id, pid, kind="original", title=win_title)
 
 
 def _transition_to_done(task: Task):

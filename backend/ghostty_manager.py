@@ -47,21 +47,14 @@ def is_alive(pid: int) -> bool:
         return False
 
 
-def focus_by_title(title: str):
-    """Bring all Ghostty windows whose title contains *title* to the front."""
-    script = (
-        'tell application "System Events"\n'
-        '  tell process "Ghostty"\n'
-        '    set frontmost to true\n'
-        '    repeat with w in windows\n'
-        f'      if name of w contains "{title}" then\n'
-        '        perform action "AXRaise" of w\n'
-        '      end if\n'
-        '    end repeat\n'
-        '  end tell\n'
-        'end tell'
-    )
-    subprocess.run(["osascript", "-e", script], check=False)
+def focus_by_pid(pid: int):
+    """Bring the Ghostty window for the given PID to the front via AppKit."""
+    from AppKit import NSRunningApplication, NSApplicationActivateAllWindows
+    app = NSRunningApplication.runningApplicationWithProcessIdentifier_(pid)
+    if app:
+        app.activateWithOptions_(NSApplicationActivateAllWindows)
+    else:
+        log.warning("No running application found for PID %d", pid)
 
 
 def kill(pid: int):

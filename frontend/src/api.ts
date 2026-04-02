@@ -34,6 +34,9 @@ export const api = {
   deleteTask: (id: string) =>
     request<{ ok: boolean }>(`/tasks/${id}`, { method: 'DELETE' }),
 
+  deleteAllDone: () =>
+    request<{ ok: boolean; deleted: number }>('/tasks/done', { method: 'DELETE' }),
+
   getAgentStatus: (id: string) =>
     request<AgentStatus>(`/tasks/${id}/agent-status`),
 

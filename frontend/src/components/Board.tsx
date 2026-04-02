@@ -14,7 +14,13 @@ import { COLUMNS } from '../types';
 import { Column } from './Column';
 import { TaskTile } from './TaskTile';
 
-const STATUS_ORDER: TaskStatus[] = ['not_started', 'in_progress', 'in_review', 'done'];
+const VALID_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
+  not_started: ['in_progress'],
+  in_progress: ['in_review', 'on_hold', 'done'],
+  in_review: ['in_progress', 'on_hold', 'done'],
+  on_hold: ['in_progress', 'in_review', 'done'],
+  done: [],
+};
 
 interface Props {
   tasks: Task[];
@@ -31,6 +37,15 @@ export function Board({ tasks, onRefresh, onError }: Props) {
     setActiveTask(task ?? null);
   }
 
+  async function handleDeleteAllDone() {
+    try {
+      await api.deleteAllDone();
+      onRefresh();
+    } catch (e: any) {
+      onError(e.message);
+    }
+  }
+
   async function handleDragEnd(event: DragEndEvent) {
     setActiveTask(null);
     const { active, over } = event;
@@ -42,10 +57,9 @@ export function Board({ tasks, onRefresh, onError }: Props) {
     const targetStatus = over.id as TaskStatus;
     if (task.status === targetStatus) return;
 
-    const fromIdx = STATUS_ORDER.indexOf(task.status);
-    const toIdx = STATUS_ORDER.indexOf(targetStatus);
-    if (toIdx !== fromIdx + 1) {
-      onError(`Can only move forward one column at a time`);
+    const allowed = VALID_TRANSITIONS[task.status] ?? [];
+    if (!allowed.includes(targetStatus)) {
+      onError(`Cannot move from "${task.status}" to "${targetStatus}"`);
       return;
     }
 
@@ -68,6 +82,7 @@ export function Board({ tasks, onRefresh, onError }: Props) {
             tasks={tasks.filter((t) => t.status === col.id)}
             onRefresh={onRefresh}
             onError={onError}
+            {...(col.id === 'done' ? { onDeleteAll: handleDeleteAllDone } : {})}
           />
         ))}
       </div>

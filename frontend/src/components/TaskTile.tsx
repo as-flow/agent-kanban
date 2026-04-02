@@ -15,7 +15,7 @@ export function TaskTile({ task, overlay, onRefresh, onError }: Props) {
   const [agentRunning, setAgentRunning] = useState(false);
   const [terminals, setTerminals] = useState<TaskTerminal[]>([]);
 
-  const isActive = task.status === 'in_progress' || task.status === 'in_review';
+  const isActive = task.status === 'in_progress' || task.status === 'in_review' || task.status === 'on_hold';
   const canDelete = task.status === 'done' || task.status === 'not_started';
 
   const refreshTerminals = useCallback(async () => {

@@ -47,7 +47,7 @@ def mock_ghostty():
     ghostty_manager.launch = MagicMock(return_value=12345)
     ghostty_manager.launch_shell = MagicMock(return_value=12346)
     ghostty_manager.is_alive = MagicMock(return_value=True)
-    ghostty_manager.focus_by_title = MagicMock()
+    ghostty_manager.focus_by_pid = MagicMock()
     ghostty_manager.kill = MagicMock()
     yield ghostty_manager
 
@@ -145,7 +145,7 @@ def test_focus_terminal(mock_ghostty):
 
     resp = client.post(f"/api/tasks/{task_id}/terminals/{term_id}/focus")
     assert resp.status_code == 200
-    mock_ghostty.focus_by_title.assert_called()
+    mock_ghostty.focus_by_pid.assert_called()
 
 
 def test_add_terminal(mock_ghostty, mock_par):

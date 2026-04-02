@@ -50,6 +50,7 @@ class TaskTerminal(BaseModel):
     task_id: str
     pid: int
     kind: str = "original"  # "original" or "shell"
+    title: str = ""
     created_at: str = ""
 
 
@@ -104,10 +105,15 @@ def init_db():
             task_id TEXT NOT NULL,
             pid INTEGER NOT NULL,
             kind TEXT NOT NULL DEFAULT 'original',
+            title TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL,
             FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
         )
     """)
+    try:
+        conn.execute("ALTER TABLE task_terminals ADD COLUMN title TEXT NOT NULL DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass  # column already exists
     conn.execute("""
         CREATE TABLE IF NOT EXISTS repo_groups (
             id TEXT PRIMARY KEY,
@@ -269,13 +275,13 @@ def _row_to_terminal(row: sqlite3.Row) -> TaskTerminal:
     return TaskTerminal(**dict(row))
 
 
-def create_terminal(task_id: str, pid: int, kind: str = "original") -> TaskTerminal:
+def create_terminal(task_id: str, pid: int, kind: str = "original", title: str = "") -> TaskTerminal:
     now = _now()
-    term = TaskTerminal(task_id=task_id, pid=pid, kind=kind, created_at=now)
+    term = TaskTerminal(task_id=task_id, pid=pid, kind=kind, title=title, created_at=now)
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
-        "INSERT INTO task_terminals (id, task_id, pid, kind, created_at) VALUES (?, ?, ?, ?, ?)",
-        (term.id, term.task_id, term.pid, term.kind, term.created_at),
+        "INSERT INTO task_terminals (id, task_id, pid, kind, title, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (term.id, term.task_id, term.pid, term.kind, term.title, term.created_at),
     )
     conn.commit()
     conn.close()

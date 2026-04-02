@@ -1,4 +1,4 @@
-export type TaskStatus = 'not_started' | 'in_progress' | 'in_review' | 'done';
+export type TaskStatus = 'not_started' | 'in_progress' | 'in_review' | 'on_hold' | 'done';
 
 export interface Task {
   id: string;
@@ -31,6 +31,7 @@ export interface TaskTerminal {
   task_id: string;
   pid: number;
   kind: 'original' | 'shell';
+  title: string;
   created_at: string;
 }
 
@@ -38,5 +39,6 @@ export const COLUMNS: { id: TaskStatus; label: string }[] = [
   { id: 'not_started', label: 'Not Started' },
   { id: 'in_progress', label: 'In Progress' },
   { id: 'in_review', label: 'In Review' },
+  { id: 'on_hold', label: 'On Hold' },
   { id: 'done', label: 'Done' },
 ];

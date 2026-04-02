@@ -7,7 +7,7 @@ export interface Task {
   repos: string[];
   par_label: string;
   tmux_session: string | null;
-  ghostty_pid: number | null;
+  terminal_pid: number | null;
   color_fg: string;
   color_bg: string;
   created_at: string;
@@ -34,6 +34,16 @@ export interface TaskTerminal {
   title: string;
   created_at: string;
 }
+
+export interface Settings {
+  terminal_app: string;
+  terminal_path: string;
+  repos_directory: string;
+}
+
+export const SUPPORTED_TERMINALS = [
+  'ghostty', 'kitty', 'alacritty', 'wezterm', 'iterm2', 'terminal',
+] as const;
 
 export const COLUMNS: { id: TaskStatus; label: string }[] = [
   { id: 'not_started', label: 'Not Started' },

@@ -1,4 +1,4 @@
-"""Integration tests for the Droid Kanban API.
+"""Integration tests for the Agent Kanban API.
 
 Run with: python -m pytest test_api.py -v
 """
@@ -14,10 +14,10 @@ os.environ["REPOS_DIRECTORY"] = "/tmp/test-repos"
 os.environ["DROID_AUTO_LEVEL"] = "medium"
 
 sys.modules.setdefault("par_manager", MagicMock())
-sys.modules.setdefault("ghostty_manager", MagicMock())
+sys.modules.setdefault("terminal_manager", MagicMock())
 
 import par_manager
-import ghostty_manager
+import terminal_manager
 from main import app
 from models import init_db, DB_PATH
 
@@ -43,13 +43,13 @@ def mock_par():
 
 
 @pytest.fixture(autouse=True)
-def mock_ghostty():
-    ghostty_manager.launch = MagicMock(return_value=12345)
-    ghostty_manager.launch_shell = MagicMock(return_value=12346)
-    ghostty_manager.is_alive = MagicMock(return_value=True)
-    ghostty_manager.focus_by_pid = MagicMock()
-    ghostty_manager.kill = MagicMock()
-    yield ghostty_manager
+def mock_terminal():
+    terminal_manager.launch = MagicMock(return_value=12345)
+    terminal_manager.launch_shell = MagicMock(return_value=12346)
+    terminal_manager.is_alive = MagicMock(return_value=True)
+    terminal_manager.focus_by_pid = MagicMock()
+    terminal_manager.kill = MagicMock()
+    yield terminal_manager
 
 
 def test_create_task():
@@ -71,7 +71,7 @@ def test_list_tasks():
     assert len(resp.json()) == 2
 
 
-def test_move_not_started_to_in_progress(mock_par, mock_ghostty):
+def test_move_not_started_to_in_progress(mock_par, mock_terminal):
     resp = client.post("/api/tasks", json={"title": "Start me", "repos": ["repo1"]})
     task_id = resp.json()["id"]
 
@@ -79,7 +79,7 @@ def test_move_not_started_to_in_progress(mock_par, mock_ghostty):
     assert resp.status_code == 200
     assert resp.json()["status"] == "in_progress"
     mock_par.workspace_start.assert_called_once()
-    mock_ghostty.launch.assert_called_once()
+    mock_terminal.launch.assert_called_once()
 
 
 def test_invalid_transition():
@@ -90,7 +90,7 @@ def test_invalid_transition():
     assert resp.status_code == 400
 
 
-def test_move_to_done_kills_ghostty(mock_ghostty):
+def test_move_to_done_kills_terminal(mock_terminal):
     resp = client.post("/api/tasks", json={"title": "Finish", "repos": ["r"]})
     task_id = resp.json()["id"]
 
@@ -98,10 +98,10 @@ def test_move_to_done_kills_ghostty(mock_ghostty):
     client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_review"})
     resp = client.patch(f"/api/tasks/{task_id}/status", json={"status": "done"})
     assert resp.status_code == 200
-    mock_ghostty.kill.assert_called()
+    mock_terminal.kill.assert_called()
 
 
-def test_delete_task(mock_par, mock_ghostty):
+def test_delete_task(mock_par, mock_terminal):
     resp = client.post("/api/tasks", json={"title": "Delete me", "repos": ["r"]})
     task_id = resp.json()["id"]
 
@@ -123,7 +123,7 @@ def test_agent_status():
     assert resp.json()["running"] is True
 
 
-def test_list_terminals_after_start(mock_ghostty):
+def test_list_terminals_after_start(mock_terminal):
     resp = client.post("/api/tasks", json={"title": "Terminals", "repos": ["r"]})
     task_id = resp.json()["id"]
     client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
@@ -135,7 +135,7 @@ def test_list_terminals_after_start(mock_ghostty):
     assert terms[0]["kind"] == "original"
 
 
-def test_focus_terminal(mock_ghostty):
+def test_focus_terminal(mock_terminal):
     resp = client.post("/api/tasks", json={"title": "Focus", "repos": ["r"]})
     task_id = resp.json()["id"]
     client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
@@ -145,10 +145,10 @@ def test_focus_terminal(mock_ghostty):
 
     resp = client.post(f"/api/tasks/{task_id}/terminals/{term_id}/focus")
     assert resp.status_code == 200
-    mock_ghostty.focus_by_pid.assert_called()
+    mock_terminal.focus_by_pid.assert_called()
 
 
-def test_add_terminal(mock_ghostty, mock_par):
+def test_add_terminal(mock_terminal, mock_par):
     par_manager.get_workspace_path = MagicMock(return_value="/tmp/ws")
     resp = client.post("/api/tasks", json={"title": "Add", "repos": ["r"]})
     task_id = resp.json()["id"]
@@ -157,13 +157,13 @@ def test_add_terminal(mock_ghostty, mock_par):
     resp = client.post(f"/api/tasks/{task_id}/terminals")
     assert resp.status_code == 201
     assert resp.json()["kind"] == "shell"
-    mock_ghostty.launch_shell.assert_called()
+    mock_terminal.launch_shell.assert_called()
 
     terms = client.get(f"/api/tasks/{task_id}/terminals").json()
     assert len(terms) == 2
 
 
-def test_delete_terminal_not_original(mock_ghostty, mock_par):
+def test_delete_terminal_not_original(mock_terminal, mock_par):
     par_manager.get_workspace_path = MagicMock(return_value="/tmp/ws")
     resp = client.post("/api/tasks", json={"title": "Del", "repos": ["r"]})
     task_id = resp.json()["id"]
@@ -181,7 +181,7 @@ def test_delete_terminal_not_original(mock_ghostty, mock_par):
     assert terms[0]["kind"] == "original"
 
 
-def test_cannot_delete_original_terminal(mock_ghostty):
+def test_cannot_delete_original_terminal(mock_terminal):
     resp = client.post("/api/tasks", json={"title": "Orig", "repos": ["r"]})
     task_id = resp.json()["id"]
     client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
@@ -191,3 +191,29 @@ def test_cannot_delete_original_terminal(mock_ghostty):
 
     resp = client.delete(f"/api/tasks/{task_id}/terminals/{orig_id}")
     assert resp.status_code == 400
+
+
+def test_get_settings():
+    resp = client.get("/api/settings")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "terminal_app" in data
+    assert "terminal_path" in data
+    assert "repos_directory" in data
+
+
+def test_update_settings():
+    resp = client.put("/api/settings", json={"terminal_app": "kitty", "repos_directory": "/tmp/repos"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["terminal_app"] == "kitty"
+    assert data["repos_directory"] == "/tmp/repos"
+
+    resp = client.get("/api/settings")
+    assert resp.json()["terminal_app"] == "kitty"
+
+
+def test_update_settings_partial():
+    resp = client.put("/api/settings", json={"terminal_path": "/usr/local/bin/ghostty"})
+    assert resp.status_code == 200
+    assert resp.json()["terminal_path"] == "/usr/local/bin/ghostty"

@@ -1,4 +1,4 @@
-import type { AgentStatus, RepoGroup, Task, TaskStatus, TaskTerminal } from './types';
+import type { AgentStatus, RepoGroup, Settings, Task, TaskStatus, TaskTerminal } from './types';
 
 const BASE = '/api';
 
@@ -71,4 +71,12 @@ export const api = {
 
   deleteRepoGroup: (id: string) =>
     request<{ ok: boolean }>(`/repo-groups/${id}`, { method: 'DELETE' }),
+
+  getSettings: () => request<Settings>('/settings'),
+
+  updateSettings: (data: Partial<Settings>) =>
+    request<Settings>('/settings', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
 };

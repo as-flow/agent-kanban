@@ -70,7 +70,7 @@ class Task(BaseModel):
     repos: list[str] = Field(default_factory=list)
     par_label: str = ""
     tmux_session: Optional[str] = None
-    ghostty_pid: Optional[int] = None
+    terminal_pid: Optional[int] = None
     color_fg: str = ""
     color_bg: str = ""
     created_at: str = ""
@@ -92,7 +92,7 @@ def init_db():
             repos TEXT NOT NULL DEFAULT '[]',
             par_label TEXT NOT NULL,
             tmux_session TEXT,
-            ghostty_pid INTEGER,
+            terminal_pid INTEGER,
             color_fg TEXT NOT NULL,
             color_bg TEXT NOT NULL,
             created_at TEXT NOT NULL,
@@ -113,13 +113,23 @@ def init_db():
     try:
         conn.execute("ALTER TABLE task_terminals ADD COLUMN title TEXT NOT NULL DEFAULT ''")
     except sqlite3.OperationalError:
-        pass  # column already exists
+        pass
+    try:
+        conn.execute("ALTER TABLE tasks RENAME COLUMN ghostty_pid TO terminal_pid")
+    except sqlite3.OperationalError:
+        pass
     conn.execute("""
         CREATE TABLE IF NOT EXISTS repo_groups (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL UNIQUE,
             repos TEXT NOT NULL DEFAULT '[]',
             created_at TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
         )
     """)
     conn.commit()
@@ -218,7 +228,7 @@ def create_task(data: TaskCreate) -> Task:
     )
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
-        """INSERT INTO tasks (id, title, status, repos, par_label, tmux_session, ghostty_pid,
+        """INSERT INTO tasks (id, title, status, repos, par_label, tmux_session, terminal_pid,
            color_fg, color_bg, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
@@ -228,7 +238,7 @@ def create_task(data: TaskCreate) -> Task:
             json.dumps(task.repos),
             task.par_label,
             task.tmux_session,
-            task.ghostty_pid,
+            task.terminal_pid,
             task.color_fg,
             task.color_bg,
             task.created_at,
@@ -322,3 +332,22 @@ def delete_terminal(terminal_id: str) -> bool:
     conn.commit()
     conn.close()
     return cur.rowcount > 0
+
+
+# --- Settings ---
+
+def get_all_settings() -> dict[str, str]:
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute("SELECT key, value FROM settings").fetchall()
+    conn.close()
+    return {k: v for k, v in rows}
+
+
+def upsert_setting(key: str, value: str):
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+        (key, value, value),
+    )
+    conn.commit()
+    conn.close()

@@ -1,6 +1,6 @@
 # Agent Kanban
 
-A visual Kanban board for managing [Factory droid](https://docs.factory.ai/reference/cli-reference) AI agent tasks across [par](https://github.com/coplane/par) workspaces, with [Ghostty](https://ghostty.org/) terminal integration.
+A visual Kanban board for managing AI agent tasks across [par](https://github.com/coplane/par) workspaces, with configurable terminal integration.
 
 Each task gets its own isolated multi-repo workspace, a color-coded terminal window, and moves through four columns: **Not Started → In Progress → In Review → Done**.
 
@@ -8,7 +8,7 @@ Each task gets its own isolated multi-repo workspace, a color-coded terminal win
 
 - **4-column Kanban board** with drag-and-drop (forward-only transitions)
 - **Par workspace management** — create multi-repo workspaces per task, cleaned up on delete
-- **Ghostty terminal integration** — each task opens a color-coded, titled terminal window; supports multiple terminal windows per task via right-click context menu
+- **Multi-terminal support** — each task opens a color-coded, titled terminal window; supports multiple terminal windows per task via right-click context menu. Works with Ghostty, Kitty, Alacritty, WezTerm, iTerm2, and Terminal.app.
 - **Repo groups** — save named collections of repos for quick selection when creating tasks
 - **Parallel git pull** — pull all repos in one click
 - **Agent status polling** — live running/stopped indicator on each tile
@@ -16,9 +16,9 @@ Each task gets its own isolated multi-repo workspace, a color-coded terminal win
 
 ## Prerequisites
 
-- [Factory droid CLI](https://docs.factory.ai/reference/cli-reference) (`droid`)
+- An AI coding agent CLI (e.g. [Factory](https://docs.factory.ai/reference/cli-reference), [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview), etc.)
 - [par](https://github.com/coplane/par) (`uv tool install par-cli`)
-- [Ghostty](https://ghostty.org/) terminal (macOS)
+- A supported terminal emulator (macOS): [Ghostty](https://ghostty.org/), [Kitty](https://sw.kovidgoyal.net/kitty/), [Alacritty](https://alacritty.org/), [WezTerm](https://wezfurlong.org/wezterm/), [iTerm2](https://iterm2.com/), or Terminal.app
 - tmux
 - Python 3.12+
 - Node.js 18+
@@ -70,14 +70,19 @@ Create a `.env` file in the project root:
 
 ```
 REPOS_DIRECTORY=/path/to/your/repos
+TERMINAL_APP=ghostty
 ```
 
-`REPOS_DIRECTORY` should point to a directory containing your git repositories. The app scans this directory for subdirectories with a `.git` folder.
+| Variable | Default | Description |
+|---|---|---|
+| `REPOS_DIRECTORY` | (required) | Directory containing your git repositories |
+| `TERMINAL_APP` | `ghostty` | Terminal to use: `ghostty`, `kitty`, `alacritty`, `wezterm`, `iterm2`, `terminal` |
+| `TERMINAL_PATH` | (auto-detected) | Override the terminal binary path |
 
 ## Usage
 
 1. **Create a task** — click "+ New Task", enter a title, select repos (or a repo group)
-2. **Start working** — drag the tile to "In Progress"; a par workspace is created and a Ghostty terminal opens
+2. **Start working** — drag the tile to "In Progress"; a par workspace is created and a terminal window opens
 3. **Open terminals** — click a tile to focus its terminal, or right-click → "New Terminal" for additional windows
 4. **Review** — drag to "In Review" (visual only)
 5. **Complete** — drag to "Done"; terminal is closed
@@ -87,4 +92,4 @@ REPOS_DIRECTORY=/path/to/your/repos
 
 - **Frontend**: React, TypeScript, Vite, Tailwind CSS, dnd-kit
 - **Backend**: Python, FastAPI, SQLite
-- **External tools**: par, droid, Ghostty, tmux
+- **External tools**: par, tmux, and a supported terminal emulator

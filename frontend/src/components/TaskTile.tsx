@@ -87,24 +87,24 @@ export function TaskTile({ task, overlay, onRefresh, onError }: Props) {
     <div
       ref={overlay ? undefined : setNodeRef}
       {...(overlay ? {} : { ...attributes, ...listeners })}
-      className={`relative rounded-lg border border-gray-700 bg-gray-800 p-3 cursor-grab active:cursor-grabbing transition-shadow hover:shadow-lg ${
+      className={`relative rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 p-3 cursor-grab active:cursor-grabbing transition-shadow hover:shadow-lg ${
         isDragging && !overlay ? 'opacity-30' : ''
       } ${overlay ? 'shadow-2xl rotate-2' : ''}`}
       style={{ borderLeftWidth: '4px', borderLeftColor: task.color_bg }}
     >
       <div className="flex items-start justify-between gap-2">
-        <h3 className="text-sm font-medium text-gray-100 leading-tight">{task.title}</h3>
+        <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 leading-tight">{task.title}</h3>
         <div className="flex items-center gap-1.5 shrink-0">
           {isActive && (
             <span
-              className={`w-2.5 h-2.5 rounded-full ${agentRunning ? 'bg-green-400 animate-pulse' : 'bg-gray-500'}`}
+              className={`w-2.5 h-2.5 rounded-full ${agentRunning ? 'bg-green-400 animate-pulse' : 'bg-gray-400 dark:bg-gray-500'}`}
               title={agentRunning ? 'Agent running' : 'Agent stopped'}
             />
           )}
           {canDelete && (
             <button
               onClick={(e) => { e.stopPropagation(); handleDeleteTask(); }}
-              className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer"
+              className="text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors cursor-pointer"
               title="Delete task"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -132,12 +132,12 @@ export function TaskTile({ task, overlay, onRefresh, onError }: Props) {
       </div>
 
       {isActive && terminals.length > 0 && (
-        <div className="mt-2 border-t border-gray-700 pt-2 space-y-1">
+        <div className="mt-2 border-t border-gray-200 dark:border-gray-700 pt-2 space-y-1">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-medium text-gray-400">Terminals</span>
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Terminals</span>
             <button
               onClick={(e) => { e.stopPropagation(); handleAddTerminal(); }}
-              className="text-gray-400 hover:text-green-400 transition-colors cursor-pointer"
+              className="text-gray-400 hover:text-green-500 dark:hover:text-green-400 transition-colors cursor-pointer"
               title="New terminal"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -151,20 +151,20 @@ export function TaskTile({ task, overlay, onRefresh, onError }: Props) {
             return (
               <div
                 key={term.id}
-                className="flex items-center justify-between group text-xs rounded px-1.5 py-1 hover:bg-gray-700/50"
+                className="flex items-center justify-between group text-xs rounded px-1.5 py-1 hover:bg-gray-100 dark:hover:bg-gray-700/50"
               >
                 <button
                   onClick={(e) => { e.stopPropagation(); handleFocusTerminal(term.id); }}
-                  className="flex items-center gap-1.5 text-gray-300 hover:text-white cursor-pointer min-w-0"
+                  className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white cursor-pointer min-w-0"
                   title={alive ? 'Focus terminal' : 'Reopen terminal'}
                 >
-                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${alive ? 'bg-green-400' : 'bg-gray-600'}`} />
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${alive ? 'bg-green-400' : 'bg-gray-400 dark:bg-gray-600'}`} />
                   <span className="truncate">{label}</span>
                 </button>
                 {term.kind !== 'original' && (
                   <button
                     onClick={(e) => { e.stopPropagation(); handleDeleteTerminal(term.id); }}
-                    className="text-gray-600 hover:text-red-400 transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
+                    className="text-gray-400 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400 transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
                     title="Close terminal"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -73,25 +73,25 @@ export function NewTaskDialog({ onClose, onCreated, onError }: Props) {
         <form
           onClick={(e) => e.stopPropagation()}
           onSubmit={handleSubmit}
-          className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md shadow-2xl"
+          className="bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-700 rounded-xl p-6 w-full max-w-md shadow-2xl"
         >
           <h2 className="text-lg font-semibold mb-4">New Task</h2>
 
-          <label className="block text-sm text-gray-400 mb-1">Title</label>
+          <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Title</label>
           <input
             autoFocus
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-4"
+            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 dark:bg-gray-800 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-4"
             placeholder="e.g. Add auth middleware"
           />
 
           <div className="flex items-center justify-between mb-2">
-            <label className="text-sm text-gray-400">Repositories</label>
+            <label className="text-sm text-gray-500 dark:text-gray-400">Repositories</label>
             <button
               type="button"
               onClick={() => setShowGroupsDialog(true)}
-              className="text-xs text-indigo-400 hover:text-indigo-300 cursor-pointer"
+              className="text-xs text-indigo-500 hover:text-indigo-400 dark:text-indigo-400 dark:hover:text-indigo-300 cursor-pointer"
             >
               Manage Groups
             </button>
@@ -108,12 +108,12 @@ export function NewTaskDialog({ onClose, onCreated, onError }: Props) {
                     onClick={() => toggleGroup(g)}
                     className={`text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer ${
                       allSelected
-                        ? 'border-indigo-500 bg-indigo-600/30 text-indigo-300'
-                        : 'border-gray-600 bg-gray-800 text-gray-400 hover:border-gray-500'
+                        ? 'border-indigo-500 bg-indigo-50 text-indigo-600 dark:bg-indigo-600/30 dark:text-indigo-300'
+                        : 'border-gray-300 bg-gray-50 text-gray-500 hover:border-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-500'
                     }`}
                   >
                     {g.name}
-                    <span className="ml-1 text-gray-500">({g.repos.length})</span>
+                    <span className="ml-1 text-gray-400 dark:text-gray-500">({g.repos.length})</span>
                   </button>
                 );
               })}
@@ -129,7 +129,7 @@ export function NewTaskDialog({ onClose, onCreated, onError }: Props) {
             <input
               value={repoSearch}
               onChange={(e) => setRepoSearch(e.target.value)}
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-2"
+              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 dark:bg-gray-800 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-2"
               placeholder="Search repos..."
             />
             <div className="grid grid-cols-2 gap-2 mb-4 max-h-48 overflow-y-auto">
@@ -140,8 +140,8 @@ export function NewTaskDialog({ onClose, onCreated, onError }: Props) {
                   onClick={() => toggleRepo(repo)}
                   className={`text-left text-sm px-3 py-2 rounded-lg border transition-colors cursor-pointer ${
                     selectedRepos.has(repo)
-                      ? 'border-indigo-500 bg-indigo-950/40 text-indigo-300'
-                      : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600'
+                      ? 'border-indigo-500 bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300'
+                      : 'border-gray-200 bg-gray-50 text-gray-500 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-600'
                   }`}
                 >
                   {repo}
@@ -155,14 +155,14 @@ export function NewTaskDialog({ onClose, onCreated, onError }: Props) {
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+              className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading || !title.trim() || selectedRepos.size === 0}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition-colors cursor-pointer"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-medium text-white transition-colors cursor-pointer"
             >
               {loading ? 'Creating...' : 'Create Task'}
             </button>

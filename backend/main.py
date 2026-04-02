@@ -8,9 +8,9 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-import ghostty_manager
+import config
+import terminal_manager
 import par_manager
-from config import REPOS_DIRECTORY
 from models import (
     RepoGroup,
     RepoGroupCreate,
@@ -42,10 +42,11 @@ log = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    config.load_settings_from_db()
     yield
 
 
-app = FastAPI(title="Droid Kanban", lifespan=lifespan)
+app = FastAPI(title="Agent Kanban", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -67,13 +68,13 @@ VALID_TRANSITIONS = {
 def list_repos() -> list[str]:
     """List git repo directories inside the configured REPOS_DIRECTORY."""
     repos = _git_repos()
-    if not repos and not Path(REPOS_DIRECTORY).is_dir():
-        raise HTTPException(400, f"REPOS_DIRECTORY not found: {REPOS_DIRECTORY}")
+    if not repos and not Path(config.REPOS_DIRECTORY).is_dir():
+        raise HTTPException(400, f"REPOS_DIRECTORY not found: {config.REPOS_DIRECTORY}")
     return [r.name for r in repos]
 
 
 def _git_repos() -> list[Path]:
-    base = Path(REPOS_DIRECTORY)
+    base = Path(config.REPOS_DIRECTORY)
     if not base.is_dir():
         return []
     return sorted(d for d in base.iterdir() if d.is_dir() and (d / ".git").exists())
@@ -97,7 +98,7 @@ def _pull_one(repo_path: Path) -> dict:
 def pull_all_repos() -> list[dict]:
     repos = _git_repos()
     if not repos:
-        raise HTTPException(400, f"No git repos found in {REPOS_DIRECTORY}")
+        raise HTTPException(400, f"No git repos found in {config.REPOS_DIRECTORY}")
     with ThreadPoolExecutor(max_workers=len(repos)) as pool:
         return list(pool.map(_pull_one, repos))
 
@@ -127,6 +128,19 @@ def remove_group(group_id: str):
     if not delete_repo_group(group_id):
         raise HTTPException(404, "Repo group not found")
     return {"ok": True}
+
+
+# --- Settings ---
+
+@app.get("/api/settings")
+def get_settings():
+    return config.get_settings()
+
+
+@app.put("/api/settings")
+def update_settings(data: dict):
+    config.apply_settings(data)
+    return config.get_settings()
 
 
 # --- Tasks ---
@@ -169,7 +183,7 @@ def remove_done_tasks():
     done_tasks = [t for t in all_tasks if t.status == "done"]
     for task in done_tasks:
         for term in get_terminals_for_task(task.id):
-            ghostty_manager.kill(term.pid)
+            terminal_manager.kill(term.pid)
         par_manager.workspace_rm(task.par_label)
         delete_task(task.id)
     return {"ok": True, "deleted": len(done_tasks)}
@@ -181,7 +195,7 @@ def remove_task(task_id: str):
     if not task:
         raise HTTPException(404, "Task not found")
     for term in get_terminals_for_task(task_id):
-        ghostty_manager.kill(term.pid)
+        terminal_manager.kill(term.pid)
     par_manager.workspace_rm(task.par_label)
     delete_task(task_id)
     return {"ok": True}
@@ -205,7 +219,7 @@ def list_terminals(task_id: str) -> list[TaskTerminal]:
         raise HTTPException(404, "Task not found")
     terminals = get_terminals_for_task(task_id)
     for t in terminals:
-        if not ghostty_manager.is_alive(t.pid):
+        if not terminal_manager.is_alive(t.pid):
             t.pid = 0
     return terminals
 
@@ -220,7 +234,7 @@ def add_terminal(task_id: str) -> TaskTerminal:
         raise HTTPException(400, "Workspace directory not found")
     short_id = _uuid.uuid4().hex[:6]
     win_title = f"{task.title} [{short_id}]"
-    pid = ghostty_manager.launch_shell(ws_path, win_title, task.color_fg, task.color_bg)
+    pid = terminal_manager.launch_shell(ws_path, win_title, task.color_fg, task.color_bg)
     return create_terminal(task_id, pid, kind="shell", title=win_title)
 
 
@@ -232,21 +246,21 @@ def focus_terminal(task_id: str, terminal_id: str) -> dict:
     term = get_terminal(terminal_id)
     if not term or term.task_id != task_id:
         raise HTTPException(404, "Terminal not found")
-    if ghostty_manager.is_alive(term.pid):
-        ghostty_manager.focus_by_pid(term.pid)
+    if terminal_manager.is_alive(term.pid):
+        terminal_manager.focus_by_pid(term.pid)
     else:
         win_title = term.title or (f"{task.title} [main]" if term.kind == "original" else f"{task.title} [{term.id[:6]}]")
         if term.kind == "original":
             if not task.tmux_session:
                 raise HTTPException(400, "Task has no tmux session")
-            pid = ghostty_manager.launch(
+            pid = terminal_manager.launch(
                 task.tmux_session, win_title, task.color_fg, task.color_bg,
             )
         else:
             ws_path = par_manager.get_workspace_path(task.par_label)
             if not ws_path:
                 raise HTTPException(400, "Workspace directory not found")
-            pid = ghostty_manager.launch_shell(ws_path, win_title, task.color_fg, task.color_bg)
+            pid = terminal_manager.launch_shell(ws_path, win_title, task.color_fg, task.color_bg)
         delete_terminal(terminal_id)
         create_terminal(task_id, pid, kind=term.kind, title=win_title)
     return {"ok": True}
@@ -262,7 +276,7 @@ def remove_terminal(task_id: str, terminal_id: str) -> dict:
         raise HTTPException(404, "Terminal not found")
     if term.kind == "original":
         raise HTTPException(400, "Cannot delete the original terminal")
-    ghostty_manager.kill(term.pid)
+    terminal_manager.kill(term.pid)
     delete_terminal(terminal_id)
     return {"ok": True}
 
@@ -272,17 +286,17 @@ def _transition_to_in_progress(task: Task):
     update_task(task.id, tmux_session=tmux_session)
 
     win_title = f"{task.title} [main]"
-    pid = ghostty_manager.launch(tmux_session, win_title, task.color_fg, task.color_bg)
-    update_task(task.id, ghostty_pid=pid)
+    pid = terminal_manager.launch(tmux_session, win_title, task.color_fg, task.color_bg)
+    update_task(task.id, terminal_pid=pid)
     create_terminal(task.id, pid, kind="original", title=win_title)
 
 
 def _transition_to_done(task: Task):
     for term in get_terminals_for_task(task.id):
-        ghostty_manager.kill(term.pid)
+        terminal_manager.kill(term.pid)
         delete_terminal(term.id)
-    if task.ghostty_pid:
-        update_task(task.id, ghostty_pid=None)
+    if task.terminal_pid:
+        update_task(task.id, terminal_pid=None)
 
 
 if __name__ == "__main__":

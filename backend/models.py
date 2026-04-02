@@ -189,7 +189,16 @@ def _row_to_task(row: sqlite3.Row) -> Task:
 
 
 def _pick_color() -> dict:
-    return random.choice(COLOR_PALETTE)
+    conn = sqlite3.connect(DB_PATH)
+    used = {
+        row[0]
+        for row in conn.execute(
+            "SELECT color_bg FROM tasks WHERE status != 'done'"
+        ).fetchall()
+    }
+    conn.close()
+    available = [c for c in COLOR_PALETTE if c["bg"] not in used]
+    return random.choice(available) if available else random.choice(COLOR_PALETTE)
 
 
 def create_task(data: TaskCreate) -> Task:

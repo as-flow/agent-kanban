@@ -174,7 +174,10 @@ def update_status(task_id: str, body: TaskStatusUpdate) -> Task:
     elif new_status == "done":
         _transition_to_done(task)
 
-    return update_task(task_id, status=new_status)
+    updated = update_task(task_id, status=new_status)
+    if not updated:
+        raise HTTPException(500, "Failed to update task")
+    return updated
 
 
 @app.delete("/api/tasks/done")
@@ -206,9 +209,10 @@ def agent_status(task_id: str) -> dict:
     task = get_task(task_id)
     if not task:
         raise HTTPException(404, "Task not found")
-    if not task.tmux_session:
+    session_name = par_manager.ensure_tmux_session(task.par_label, task.tmux_session, create=False)
+    if not session_name or not par_manager.is_tmux_session_alive(session_name):
         return {"running": False, "command": ""}
-    cmd = par_manager.get_pane_command(task.tmux_session)
+    cmd = par_manager.get_pane_command(session_name)
     return {"running": "droid" in cmd.lower(), "command": cmd}
 
 
@@ -251,10 +255,18 @@ def focus_terminal(task_id: str, terminal_id: str) -> dict:
     else:
         win_title = term.title or (f"{task.title} [main]" if term.kind == "original" else f"{task.title} [{term.id[:6]}]")
         if term.kind == "original":
-            if not task.tmux_session:
+            try:
+                session_name = par_manager.ensure_tmux_session(
+                    task.par_label, task.tmux_session, create=True,
+                )
+            except FileNotFoundError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            if not session_name:
                 raise HTTPException(400, "Task has no tmux session")
+            if task.tmux_session != session_name:
+                update_task(task.id, tmux_session=session_name)
             pid = terminal_manager.launch(
-                task.tmux_session, win_title, task.color_fg, task.color_bg,
+                session_name, win_title, task.color_fg, task.color_bg,
             )
         else:
             ws_path = par_manager.get_workspace_path(task.par_label)

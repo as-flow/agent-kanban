@@ -4,8 +4,7 @@ Run with: python -m pytest test_api.py -v
 """
 
 import os
-import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,13 +12,10 @@ from fastapi.testclient import TestClient
 os.environ["REPOS_DIRECTORY"] = "/tmp/test-repos"
 os.environ["DROID_AUTO_LEVEL"] = "medium"
 
-sys.modules.setdefault("par_manager", MagicMock())
-sys.modules.setdefault("terminal_manager", MagicMock())
-
-import par_manager
-import terminal_manager
-from main import app
-from models import init_db, DB_PATH
+import par_manager  # noqa: E402
+import terminal_manager  # noqa: E402
+from main import app  # noqa: E402
+from models import init_db  # noqa: E402
 
 client = TestClient(app)
 
@@ -39,6 +35,7 @@ def mock_par():
     par_manager.send_command = MagicMock()
     par_manager.get_pane_command = MagicMock(return_value="droid")
     par_manager.is_tmux_session_alive = MagicMock(return_value=True)
+    par_manager.ensure_tmux_session = MagicMock(return_value="par-ws-test-abc123")
     yield par_manager
 
 
@@ -148,6 +145,29 @@ def test_focus_terminal(mock_terminal):
     mock_terminal.focus_by_pid.assert_called()
 
 
+def test_focus_terminal_recovers_dead_original_terminal(mock_terminal, mock_par):
+    resp = client.post("/api/tasks", json={"title": "Recover", "repos": ["r"]})
+    task = resp.json()
+    task_id = task["id"]
+    client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
+
+    mock_terminal.is_alive.return_value = False
+    mock_par.ensure_tmux_session.return_value = "par-ws-recovered"
+
+    terms = client.get(f"/api/tasks/{task_id}/terminals").json()
+    term_id = terms[0]["id"]
+
+    resp = client.post(f"/api/tasks/{task_id}/terminals/{term_id}/focus")
+    assert resp.status_code == 200
+    mock_par.ensure_tmux_session.assert_called_with(task["par_label"], "par-ws-test-abc123", create=True)
+    mock_terminal.launch.assert_called_with(
+        "par-ws-recovered",
+        "Recover [main]",
+        task["color_fg"],
+        task["color_bg"],
+    )
+
+
 def test_add_terminal(mock_terminal, mock_par):
     par_manager.get_workspace_path = MagicMock(return_value="/tmp/ws")
     resp = client.post("/api/tasks", json={"title": "Add", "repos": ["r"]})
@@ -161,6 +181,45 @@ def test_add_terminal(mock_terminal, mock_par):
 
     terms = client.get(f"/api/tasks/{task_id}/terminals").json()
     assert len(terms) == 2
+
+
+def test_focus_shell_terminal_reopens_from_workspace(mock_terminal, mock_par):
+    par_manager.get_workspace_path = MagicMock(return_value="/tmp/ws")
+    resp = client.post("/api/tasks", json={"title": "Shell reopen", "repos": ["r"]})
+    task = resp.json()
+    task_id = task["id"]
+    client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
+    client.post(f"/api/tasks/{task_id}/terminals")
+
+    mock_terminal.is_alive.return_value = False
+
+    terms = client.get(f"/api/tasks/{task_id}/terminals").json()
+    shell_term = [t for t in terms if t["kind"] == "shell"][0]
+
+    resp = client.post(f"/api/tasks/{task_id}/terminals/{shell_term['id']}/focus")
+    assert resp.status_code == 200
+    mock_terminal.launch_shell.assert_called_with(
+        "/tmp/ws",
+        shell_term["title"],
+        task["color_fg"],
+        task["color_bg"],
+    )
+
+
+def test_focus_terminal_returns_400_when_workspace_missing(mock_terminal, mock_par):
+    resp = client.post("/api/tasks", json={"title": "Missing ws", "repos": ["r"]})
+    task_id = resp.json()["id"]
+    client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
+
+    mock_terminal.is_alive.return_value = False
+    mock_par.ensure_tmux_session.side_effect = FileNotFoundError("Workspace directory not found")
+
+    terms = client.get(f"/api/tasks/{task_id}/terminals").json()
+    term_id = terms[0]["id"]
+
+    resp = client.post(f"/api/tasks/{task_id}/terminals/{term_id}/focus")
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Workspace directory not found"
 
 
 def test_delete_terminal_not_original(mock_terminal, mock_par):

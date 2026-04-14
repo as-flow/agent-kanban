@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 backend/.venv/
 backend/.pytest_cache/
+backend/kanban.db
 data/
 
 # Node

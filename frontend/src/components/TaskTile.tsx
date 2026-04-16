@@ -2,6 +2,7 @@ import { useDraggable } from '@dnd-kit/core';
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import type { Task, TaskTerminal } from '../types';
+import { useTheme } from '../useTheme';
 
 interface Props {
   task: Task;
@@ -10,10 +11,27 @@ interface Props {
   onError: (msg: string) => void;
 }
 
+function mixWithWhite(hex: string, amount: number) {
+  const normalized = hex.replace('#', '');
+  if (normalized.length !== 6) return hex;
+
+  const mixed = [0, 2, 4]
+    .map((offset) => {
+      const channel = Number.parseInt(normalized.slice(offset, offset + 2), 16);
+      const value = Math.round(channel + (255 - channel) * amount);
+      return value.toString(16).padStart(2, '0');
+    })
+    .join('');
+
+  return `#${mixed}`;
+}
+
 export function TaskTile({ task, overlay, onRefresh, onError }: Props) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: task.id });
   const [agentRunning, setAgentRunning] = useState(false);
   const [terminals, setTerminals] = useState<TaskTerminal[]>([]);
+  const { theme } = useTheme();
+  const accentColor = theme === 'dark' ? task.color_bg : mixWithWhite(task.color_bg, 0.35);
 
   const isActive = task.status === 'in_progress' || task.status === 'in_review' || task.status === 'on_hold';
   const canDelete = task.status === 'done' || task.status === 'not_started';
@@ -90,7 +108,7 @@ export function TaskTile({ task, overlay, onRefresh, onError }: Props) {
       className={`relative rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 p-3 cursor-grab active:cursor-grabbing transition-shadow hover:shadow-lg ${
         isDragging && !overlay ? 'opacity-30' : ''
       } ${overlay ? 'shadow-2xl rotate-2' : ''}`}
-      style={{ borderLeftWidth: '4px', borderLeftColor: task.color_bg }}
+      style={{ borderLeftWidth: '4px', borderLeftColor: accentColor }}
     >
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 leading-tight">{task.title}</h3>
@@ -119,22 +137,25 @@ export function TaskTile({ task, overlay, onRefresh, onError }: Props) {
         {task.repos.map((repo) => (
           <span
             key={repo}
-            className="text-xs px-2 py-0.5 rounded-full"
-            style={{ backgroundColor: task.color_bg + '40', color: task.color_fg }}
+            className="text-xs font-medium px-2 py-0.5 rounded-full"
+            style={{
+              backgroundColor: task.color_bg + '40',
+              color: theme === 'dark' ? task.color_fg : '#1f2937',
+            }}
           >
             {repo}
           </span>
         ))}
       </div>
 
-      <div className="mt-2 text-xs text-gray-500 font-mono truncate" title={task.par_label}>
+      <div className="mt-2 text-xs text-gray-600 dark:text-gray-400 font-mono truncate" title={task.par_label}>
         {task.par_label}
       </div>
 
       {isActive && terminals.length > 0 && (
         <div className="mt-2 border-t border-gray-200 dark:border-gray-700 pt-2 space-y-1">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Terminals</span>
+            <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Terminals</span>
             <button
               onClick={(e) => { e.stopPropagation(); handleAddTerminal(); }}
               className="text-gray-400 hover:text-green-500 dark:hover:text-green-400 transition-colors cursor-pointer"

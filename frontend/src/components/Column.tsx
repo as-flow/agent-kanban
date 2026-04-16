@@ -24,7 +24,7 @@ export function Column({ id, label, tasks, onRefresh, onError, onDeleteAll }: Pr
       }`}
     >
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800">
-        <h2 className="text-sm font-semibold text-gray-600 dark:text-gray-300">{label}</h2>
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">{label}</h2>
         <div className="flex items-center gap-2">
           {onDeleteAll && tasks.length > 0 && (
             <button
@@ -39,7 +39,7 @@ export function Column({ id, label, tasks, onRefresh, onError, onDeleteAll }: Pr
               Clear all
             </button>
           )}
-          <span className="text-xs text-gray-500 bg-gray-200 dark:bg-gray-800 px-2 py-0.5 rounded-full">
+          <span className="text-xs text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-800 px-2 py-0.5 rounded-full">
             {tasks.length}
           </span>
         </div>

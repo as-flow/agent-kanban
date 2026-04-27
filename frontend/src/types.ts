@@ -14,6 +14,11 @@ export interface Task {
   updated_at: string;
 }
 
+export interface RepoInfo {
+  name: string;
+  branch: string;
+}
+
 export interface RepoGroup {
   id: string;
   name: string;

@@ -73,7 +73,7 @@ export function Board({ tasks, onRefresh, onError }: Props) {
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div className="flex-1 flex gap-4 p-6 overflow-x-auto">
+      <div className="flex-1 flex gap-4 p-6 overflow-x-auto min-h-0 w-full">
         {COLUMNS.map((col) => (
           <Column
             key={col.id}

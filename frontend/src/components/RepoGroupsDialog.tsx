@@ -18,7 +18,10 @@ export function RepoGroupsDialog({ onClose, onError }: Props) {
 
   useEffect(() => {
     refresh();
-    api.getRepos().then(setAvailableRepos).catch((e) => onError(e.message));
+    api
+      .getRepos()
+      .then((rows) => setAvailableRepos(rows.map((r) => r.name)))
+      .catch((e) => onError(e.message));
   }, [onError]);
 
   async function refresh() {

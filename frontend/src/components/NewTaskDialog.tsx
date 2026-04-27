@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { formatLastPulledLabel, LAST_PULLED_EVENT, readLastPulledAt } from '../lastPulled';
 import type { RepoGroup } from '../types';
 import { RepoGroupsDialog } from './RepoGroupsDialog';
 
@@ -17,9 +18,27 @@ export function NewTaskDialog({ onClose, onCreated, onError }: Props) {
   const [repoSearch, setRepoSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [showGroupsDialog, setShowGroupsDialog] = useState(false);
+  const [lastPulledLabel, setLastPulledLabel] = useState(() =>
+    formatLastPulledLabel(readLastPulledAt()),
+  );
 
   useEffect(() => {
-    api.getRepos().then(setAvailableRepos).catch((e) => onError(e.message));
+    function syncLabel() {
+      setLastPulledLabel(formatLastPulledLabel(readLastPulledAt()));
+    }
+    window.addEventListener(LAST_PULLED_EVENT, syncLabel);
+    window.addEventListener('storage', syncLabel);
+    return () => {
+      window.removeEventListener(LAST_PULLED_EVENT, syncLabel);
+      window.removeEventListener('storage', syncLabel);
+    };
+  }, []);
+
+  useEffect(() => {
+    api
+      .getRepos()
+      .then((rows) => setAvailableRepos(rows.map((r) => r.name)))
+      .catch((e) => onError(e.message));
     refreshGroups();
   }, [onError]);
 
@@ -75,7 +94,8 @@ export function NewTaskDialog({ onClose, onCreated, onError }: Props) {
           onSubmit={handleSubmit}
           className="bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-700 rounded-xl p-6 w-full max-w-md shadow-2xl"
         >
-          <h2 className="text-lg font-semibold mb-4">New Task</h2>
+          <h2 className="text-lg font-semibold mb-1">New Task</h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Last pulled: {lastPulledLabel}</p>
 
           <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Title</label>
           <input

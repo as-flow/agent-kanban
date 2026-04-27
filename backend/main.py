@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 import config
 import terminal_manager
@@ -55,6 +56,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class RepoInfo(BaseModel):
+    name: str
+    branch: str
+
+
 VALID_TRANSITIONS = {
     "not_started": ["in_progress"],
     "in_progress": ["in_review", "on_hold", "done"],
@@ -65,12 +71,40 @@ VALID_TRANSITIONS = {
 
 
 @app.get("/api/repos")
-def list_repos() -> list[str]:
-    """List git repo directories inside the configured REPOS_DIRECTORY."""
+def list_repos() -> list[RepoInfo]:
+    """List git repo directories inside the configured REPOS_DIRECTORY with current branch."""
     repos = _git_repos()
     if not repos and not Path(config.REPOS_DIRECTORY).is_dir():
         raise HTTPException(400, f"REPOS_DIRECTORY not found: {config.REPOS_DIRECTORY}")
-    return [r.name for r in repos]
+    return [RepoInfo(name=r.name, branch=_current_branch(r)) for r in repos]
+
+
+def _current_branch(repo_path: Path) -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return "unknown"
+        ref = (result.stdout or "").strip()
+        if ref == "HEAD":
+            short = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if short.returncode == 0 and (short.stdout or "").strip():
+                return f"detached @ {(short.stdout or '').strip()}"
+            return "detached"
+        return ref
+    except Exception:
+        return "unknown"
 
 
 def _git_repos() -> list[Path]:

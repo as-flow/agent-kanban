@@ -1,4 +1,4 @@
-import type { AgentStatus, RepoGroup, Settings, Task, TaskStatus, TaskTerminal } from './types';
+import type { AgentStatus, RepoGroup, RepoInfo, Settings, Task, TaskStatus, TaskTerminal } from './types';
 
 const BASE = '/api';
 
@@ -17,7 +17,7 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
 export const api = {
   getTasks: () => request<Task[]>('/tasks'),
 
-  getRepos: () => request<string[]>('/repos'),
+  getRepos: () => request<RepoInfo[]>('/repos'),
 
   createTask: (title: string, repos: string[]) =>
     request<Task>('/tasks', {

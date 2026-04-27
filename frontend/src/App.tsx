@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Board } from './components/Board';
 import { NewTaskDialog } from './components/NewTaskDialog';
+import { ReposSidebar } from './components/ReposSidebar';
 import { SettingsDialog } from './components/SettingsDialog';
 import { api } from './api';
 import { useTheme } from './useTheme';
@@ -11,8 +12,6 @@ export default function App() {
   const [showDialog, setShowDialog] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pulling, setPulling] = useState(false);
-  const [pullMsg, setPullMsg] = useState<string | null>(null);
   const { theme, toggle: toggleTheme } = useTheme();
 
   const refresh = useCallback(async () => {
@@ -28,34 +27,12 @@ export default function App() {
   }, [refresh]);
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 flex flex-col">
-      <header className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
+    <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 flex flex-row">
+      <ReposSidebar onError={setError} />
+      <div className="flex flex-col flex-1 min-w-0 min-h-0">
+        <header className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
         <h1 className="text-xl font-bold tracking-tight">Agent Kanban</h1>
         <div className="flex items-center gap-3">
-          <button
-            disabled={pulling}
-            onClick={async () => {
-              setPulling(true);
-              setPullMsg(null);
-              try {
-                const results = await api.pullAllRepos();
-                const ok = results.filter((r) => r.ok).length;
-                const total = results.length;
-                const msg = ok === total
-                  ? `${total}/${total} repos pulled`
-                  : `${ok}/${total} repos pulled -- ${total - ok} failed`;
-                setPullMsg(msg);
-                setTimeout(() => setPullMsg(null), 5000);
-              } catch (e: any) {
-                setError(e.message);
-              } finally {
-                setPulling(false);
-              }
-            }}
-            className="px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-          >
-            {pulling ? 'Pulling...' : 'Pull All'}
-          </button>
           <button
             onClick={toggleTheme}
             className="p-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-lg transition-colors cursor-pointer"
@@ -87,41 +64,37 @@ export default function App() {
             + New Task
           </button>
         </div>
-      </header>
+        </header>
 
-      {error && (
-        <div className="mx-6 mt-4 p-3 bg-red-100 border border-red-300 text-red-700 dark:bg-red-900/50 dark:border-red-700 dark:text-red-200 rounded-lg text-sm">
-          {error}
-          <button onClick={() => setError(null)} className="ml-2 underline">dismiss</button>
+        {error && (
+          <div className="mx-6 mt-4 p-3 bg-red-100 border border-red-300 text-red-700 dark:bg-red-900/50 dark:border-red-700 dark:text-red-200 rounded-lg text-sm">
+            {error}
+            <button onClick={() => setError(null)} className="ml-2 underline">dismiss</button>
+          </div>
+        )}
+
+        <div className="flex-1 min-h-0 min-w-0 flex flex-col">
+          <Board tasks={tasks} onRefresh={refresh} onError={setError} />
         </div>
-      )}
 
-      {pullMsg && (
-        <div className="mx-6 mt-4 p-3 bg-green-100 border border-green-300 text-green-700 dark:bg-green-900/50 dark:border-green-700 dark:text-green-200 rounded-lg text-sm">
-          {pullMsg}
-          <button onClick={() => setPullMsg(null)} className="ml-2 underline">dismiss</button>
-        </div>
-      )}
+        {showDialog && (
+          <NewTaskDialog
+            onClose={() => setShowDialog(false)}
+            onCreated={() => {
+              setShowDialog(false);
+              refresh();
+            }}
+            onError={setError}
+          />
+        )}
 
-      <Board tasks={tasks} onRefresh={refresh} onError={setError} />
-
-      {showDialog && (
-        <NewTaskDialog
-          onClose={() => setShowDialog(false)}
-          onCreated={() => {
-            setShowDialog(false);
-            refresh();
-          }}
-          onError={setError}
-        />
-      )}
-
-      {showSettings && (
-        <SettingsDialog
-          onClose={() => setShowSettings(false)}
-          onError={setError}
-        />
-      )}
+        {showSettings && (
+          <SettingsDialog
+            onClose={() => setShowSettings(false)}
+            onError={setError}
+          />
+        )}
+      </div>
     </div>
   );
 }

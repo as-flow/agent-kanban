@@ -30,6 +30,7 @@ interface Props {
 
 export function Board({ tasks, onRefresh, onError }: Props) {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [clearingDone, setClearingDone] = useState(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   function handleDragStart(event: DragStartEvent) {
@@ -38,11 +39,14 @@ export function Board({ tasks, onRefresh, onError }: Props) {
   }
 
   async function handleDeleteAllDone() {
+    setClearingDone(true);
     try {
       await api.deleteAllDone();
       onRefresh();
     } catch (e: any) {
       onError(e.message);
+    } finally {
+      setClearingDone(false);
     }
   }
 
@@ -82,7 +86,7 @@ export function Board({ tasks, onRefresh, onError }: Props) {
             tasks={tasks.filter((t) => t.status === col.id)}
             onRefresh={onRefresh}
             onError={onError}
-            {...(col.id === 'done' ? { onDeleteAll: handleDeleteAllDone } : {})}
+            {...(col.id === 'done' ? { onDeleteAll: handleDeleteAllDone, isClearingAll: clearingDone } : {})}
           />
         ))}
       </div>

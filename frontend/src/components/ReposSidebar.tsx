@@ -55,12 +55,15 @@ export function ReposSidebar({ onError }: Props) {
       writeLastPulledNow();
       const ok = results.filter((r) => r.ok).length;
       const total = results.length;
+      const failedRepos = results.filter((r) => !r.ok).map((r) => r.repo);
       const msg =
         ok === total
           ? `${total}/${total} repos pulled`
-          : `${ok}/${total} repos pulled -- ${total - ok} failed`;
+          : `${ok}/${total} repos pulled -- failed: ${failedRepos.join(', ')}`;
       setPullMsg(msg);
-      setTimeout(() => setPullMsg(null), 5000);
+      if (failedRepos.length === 0) {
+        setTimeout(() => setPullMsg(null), 5000);
+      }
       loadRepos();
     } catch (e: any) {
       onError(e.message);

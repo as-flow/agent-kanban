@@ -289,18 +289,17 @@ def focus_terminal(task_id: str, terminal_id: str) -> dict:
     else:
         win_title = term.title or (f"{task.title} [main]" if term.kind == "original" else f"{task.title} [{term.id[:6]}]")
         if term.kind == "original":
+            ws_path = par_manager.get_workspace_path(task.par_label)
+            if not ws_path:
+                raise HTTPException(400, "Workspace directory not found")
             try:
-                session_name = par_manager.ensure_tmux_session(
+                par_manager.ensure_tmux_session(
                     task.par_label, task.tmux_session, create=True,
                 )
             except FileNotFoundError as exc:
                 raise HTTPException(400, str(exc)) from exc
-            if not session_name:
-                raise HTTPException(400, "Task has no tmux session")
-            if task.tmux_session != session_name:
-                update_task(task.id, tmux_session=session_name)
-            pid = terminal_manager.launch(
-                session_name, win_title, task.color_fg, task.color_bg,
+            pid = terminal_manager.launch_shell(
+                ws_path, win_title, task.color_fg, task.color_bg,
             )
         else:
             ws_path = par_manager.get_workspace_path(task.par_label)
@@ -331,8 +330,14 @@ def _transition_to_in_progress(task: Task):
     tmux_session = par_manager.workspace_start(task.par_label, task.repos)
     update_task(task.id, tmux_session=tmux_session)
 
+    ws_path = par_manager.get_workspace_path(task.par_label)
+    if not ws_path:
+        raise HTTPException(500, "Workspace directory not found")
+
     win_title = f"{task.title} [main]"
-    pid = terminal_manager.launch(tmux_session, win_title, task.color_fg, task.color_bg)
+    # Open a direct Ghostty shell in the workspace (not tmux attach) so droid gets
+    # full terminal capabilities. The par tmux session still exists for attach/shell terminals.
+    pid = terminal_manager.launch_shell(ws_path, win_title, task.color_fg, task.color_bg)
     update_task(task.id, terminal_pid=pid)
     create_terminal(task.id, pid, kind="original", title=win_title)
 

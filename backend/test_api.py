@@ -36,6 +36,7 @@ def mock_par():
     par_manager.get_pane_command = MagicMock(return_value="droid")
     par_manager.is_tmux_session_alive = MagicMock(return_value=True)
     par_manager.ensure_tmux_session = MagicMock(return_value="par-ws-test-abc123")
+    par_manager.get_workspace_path = MagicMock(return_value="/tmp/test-ws")
     yield par_manager
 
 
@@ -76,7 +77,7 @@ def test_move_not_started_to_in_progress(mock_par, mock_terminal):
     assert resp.status_code == 200
     assert resp.json()["status"] == "in_progress"
     mock_par.workspace_start.assert_called_once()
-    mock_terminal.launch.assert_called_once()
+    mock_terminal.launch_shell.assert_called_once()
 
 
 def test_invalid_transition():
@@ -160,8 +161,8 @@ def test_focus_terminal_recovers_dead_original_terminal(mock_terminal, mock_par)
     resp = client.post(f"/api/tasks/{task_id}/terminals/{term_id}/focus")
     assert resp.status_code == 200
     mock_par.ensure_tmux_session.assert_called_with(task["par_label"], "par-ws-test-abc123", create=True)
-    mock_terminal.launch.assert_called_with(
-        "par-ws-recovered",
+    mock_terminal.launch_shell.assert_called_with(
+        "/tmp/test-ws",
         "Recover [main]",
         task["color_fg"],
         task["color_bg"],
@@ -212,7 +213,7 @@ def test_focus_terminal_returns_400_when_workspace_missing(mock_terminal, mock_p
     client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
 
     mock_terminal.is_alive.return_value = False
-    mock_par.ensure_tmux_session.side_effect = FileNotFoundError("Workspace directory not found")
+    par_manager.get_workspace_path = MagicMock(return_value="")
 
     terms = client.get(f"/api/tasks/{task_id}/terminals").json()
     term_id = terms[0]["id"]

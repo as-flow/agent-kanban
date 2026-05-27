@@ -43,26 +43,24 @@ pip install -r requirements.txt
 # Frontend
 cd ../frontend
 npm install
+
+# Dev runner (for `npm run dev` from project root)
+cd ..
+npm install
 ```
 
 ## Running
 
-Start both the backend and frontend:
+Start both the backend and frontend with one command:
 
 ```bash
-# Terminal 1 — backend
-cd backend
-source .venv/bin/activate
-python main.py
-# Runs on http://localhost:8000
-
-# Terminal 2 — frontend
-cd frontend
+# From the project root (run `npm install` once first)
 npm run dev
-# Runs on http://localhost:5173
 ```
 
-Open http://localhost:5173 in your browser.
+Or in Cursor/VS Code: **Terminal → Run Build Task** (default shortcut: `Cmd+Shift+B` on macOS).
+
+Backend runs on http://localhost:8420; frontend on http://localhost:5173. Open http://localhost:5173 in your browser.
 
 ## Configuration
 

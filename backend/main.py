@@ -301,6 +301,7 @@ def focus_terminal(task_id: str, terminal_id: str) -> dict:
                 raise HTTPException(400, "Task has no tmux session")
             if task.tmux_session != session_name:
                 update_task(task.id, tmux_session=session_name)
+            par_manager.configure_tmux_session(session_name)
             pid = terminal_manager.launch(session_name, win_title, task.color_fg, task.color_bg)
         else:
             ws_path = par_manager.get_workspace_path(task.par_label)
@@ -329,6 +330,7 @@ def remove_terminal(task_id: str, terminal_id: str) -> dict:
 
 def _transition_to_in_progress(task: Task):
     tmux_session = par_manager.workspace_start(task.par_label, task.repos)
+    par_manager.configure_tmux_session(tmux_session)
     update_task(task.id, tmux_session=tmux_session)
     _launch_original_terminal(task, tmux_session)
 
@@ -340,6 +342,7 @@ def _restore_in_progress(task: Task):
         )
     except FileNotFoundError as exc:
         raise HTTPException(400, str(exc)) from exc
+    par_manager.configure_tmux_session(tmux_session)
     update_task(task.id, tmux_session=tmux_session)
     _launch_original_terminal(task, tmux_session)
 

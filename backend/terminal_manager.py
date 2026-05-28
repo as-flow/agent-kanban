@@ -5,6 +5,7 @@ import subprocess
 import logging
 
 import config
+from process_env import cleaned_child_env
 
 log = logging.getLogger(__name__)
 
@@ -16,34 +17,6 @@ DEFAULT_PATHS = {
     "alacritty": "alacritty",
     "wezterm": "wezterm",
 }
-
-GHOSTTY_TERMINFO = "/Applications/Ghostty.app/Contents/Resources/terminfo"
-
-# Cursor/CI often sets these on the dev server process; they break droid's TUI colors/cursor.
-_STRIP_ENV_KEYS = frozenset({
-    "NO_COLOR",
-    "FORCE_COLOR",
-    "CLICOLOR",
-    "CLICOLOR_FORCE",
-    "CI",
-})
-
-
-def _terminal_child_env() -> dict[str, str]:
-    """Environment for child terminal processes launched from the kanban backend."""
-    env = os.environ.copy()
-    for key in list(env.keys()):
-        if key in _STRIP_ENV_KEYS or key.startswith("CURSOR_"):
-            del env[key]
-    if env.get("TERM") in ("dumb", ""):
-        env.pop("TERM", None)
-    existing = env.get("TERMINFO_DIRS", "")
-    if GHOSTTY_TERMINFO not in existing.split(":"):
-        env["TERMINFO_DIRS"] = (
-            f"{GHOSTTY_TERMINFO}:{existing}" if existing else GHOSTTY_TERMINFO
-        )
-    return env
-
 
 def _resolve_binary(app: str) -> str:
     if config.TERMINAL_PATH:
@@ -80,7 +53,7 @@ def _ghostty_launch(tmux_session: str, title: str, color_fg: str, color_bg: str)
         "-e", "tmux", "attach-session", "-t", tmux_session,
     ]
     log.info("Launching Ghostty: %s", " ".join(cmd))
-    return subprocess.Popen(cmd, start_new_session=True, env=_terminal_child_env()).pid
+    return subprocess.Popen(cmd, start_new_session=True, env=cleaned_child_env()).pid
 
 
 def _ghostty_launch_shell(working_dir: str, title: str, color_fg: str, color_bg: str) -> int:
@@ -93,7 +66,7 @@ def _ghostty_launch_shell(working_dir: str, title: str, color_fg: str, color_bg:
         f"--working-directory={working_dir}",
     ]
     log.info("Launching Ghostty shell: %s", " ".join(cmd))
-    return subprocess.Popen(cmd, start_new_session=True, env=_terminal_child_env()).pid
+    return subprocess.Popen(cmd, start_new_session=True, env=cleaned_child_env()).pid
 
 
 def _kitty_launch(tmux_session: str, title: str, color_fg: str, color_bg: str) -> int:
@@ -106,7 +79,7 @@ def _kitty_launch(tmux_session: str, title: str, color_fg: str, color_bg: str) -
         "-e", "tmux", "attach-session", "-t", tmux_session,
     ]
     log.info("Launching Kitty: %s", " ".join(cmd))
-    return subprocess.Popen(cmd, start_new_session=True, env=_terminal_child_env()).pid
+    return subprocess.Popen(cmd, start_new_session=True, env=cleaned_child_env()).pid
 
 
 def _kitty_launch_shell(working_dir: str, title: str, color_fg: str, color_bg: str) -> int:
@@ -119,7 +92,7 @@ def _kitty_launch_shell(working_dir: str, title: str, color_fg: str, color_bg: s
         "--directory", working_dir,
     ]
     log.info("Launching Kitty shell: %s", " ".join(cmd))
-    return subprocess.Popen(cmd, start_new_session=True, env=_terminal_child_env()).pid
+    return subprocess.Popen(cmd, start_new_session=True, env=cleaned_child_env()).pid
 
 
 def _alacritty_launch(tmux_session: str, title: str, color_fg: str, color_bg: str) -> int:
@@ -130,7 +103,7 @@ def _alacritty_launch(tmux_session: str, title: str, color_fg: str, color_bg: st
         "-e", "tmux", "attach-session", "-t", tmux_session,
     ]
     log.info("Launching Alacritty: %s", " ".join(cmd))
-    return subprocess.Popen(cmd, start_new_session=True, env=_terminal_child_env()).pid
+    return subprocess.Popen(cmd, start_new_session=True, env=cleaned_child_env()).pid
 
 
 def _alacritty_launch_shell(working_dir: str, title: str, color_fg: str, color_bg: str) -> int:
@@ -141,7 +114,7 @@ def _alacritty_launch_shell(working_dir: str, title: str, color_fg: str, color_b
         "--working-directory", working_dir,
     ]
     log.info("Launching Alacritty shell: %s", " ".join(cmd))
-    return subprocess.Popen(cmd, start_new_session=True, env=_terminal_child_env()).pid
+    return subprocess.Popen(cmd, start_new_session=True, env=cleaned_child_env()).pid
 
 
 def _wezterm_launch(tmux_session: str, title: str, color_fg: str, color_bg: str) -> int:
@@ -151,7 +124,7 @@ def _wezterm_launch(tmux_session: str, title: str, color_fg: str, color_bg: str)
         "--", "tmux", "attach-session", "-t", tmux_session,
     ]
     log.info("Launching WezTerm: %s", " ".join(cmd))
-    return subprocess.Popen(cmd, start_new_session=True, env=_terminal_child_env()).pid
+    return subprocess.Popen(cmd, start_new_session=True, env=cleaned_child_env()).pid
 
 
 def _wezterm_launch_shell(working_dir: str, title: str, color_fg: str, color_bg: str) -> int:
@@ -161,7 +134,7 @@ def _wezterm_launch_shell(working_dir: str, title: str, color_fg: str, color_bg:
         "--cwd", working_dir,
     ]
     log.info("Launching WezTerm shell: %s", " ".join(cmd))
-    return subprocess.Popen(cmd, start_new_session=True, env=_terminal_child_env()).pid
+    return subprocess.Popen(cmd, start_new_session=True, env=cleaned_child_env()).pid
 
 
 # ---------------------------------------------------------------------------

@@ -36,6 +36,7 @@ def mock_par():
     par_manager.get_pane_command = MagicMock(return_value="droid")
     par_manager.is_tmux_session_alive = MagicMock(return_value=True)
     par_manager.ensure_tmux_session = MagicMock(return_value="par-ws-test-abc123")
+    par_manager.configure_tmux_session = MagicMock()
     par_manager.get_workspace_path = MagicMock(return_value="/tmp/test-ws")
     yield par_manager
 
@@ -77,6 +78,7 @@ def test_move_not_started_to_in_progress(mock_par, mock_terminal):
     assert resp.status_code == 200
     assert resp.json()["status"] == "in_progress"
     mock_par.workspace_start.assert_called_once()
+    mock_par.configure_tmux_session.assert_called_once_with("par-ws-test-abc123")
     mock_terminal.launch.assert_called_once_with(
         "par-ws-test-abc123",
         "Start me [main]",
@@ -115,12 +117,14 @@ def test_move_done_to_in_progress_restores_session(mock_par, mock_terminal):
 
     mock_par.ensure_tmux_session.return_value = "par-ws-restored"
     mock_terminal.launch.reset_mock()
+    mock_par.configure_tmux_session.reset_mock()
 
     resp = client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
     assert resp.status_code == 200
     assert resp.json()["status"] == "in_progress"
     assert resp.json()["tmux_session"] == "par-ws-restored"
     mock_par.ensure_tmux_session.assert_called_with(task["par_label"], "par-ws-test-abc123", create=True)
+    mock_par.configure_tmux_session.assert_called_once_with("par-ws-restored")
     mock_terminal.launch.assert_called_once_with(
         "par-ws-restored",
         "Restore [main]",
@@ -184,6 +188,7 @@ def test_focus_terminal_recovers_dead_original_terminal(mock_terminal, mock_par)
 
     mock_terminal.is_alive.return_value = False
     mock_par.ensure_tmux_session.return_value = "par-ws-recovered"
+    mock_par.configure_tmux_session.reset_mock()
 
     terms = client.get(f"/api/tasks/{task_id}/terminals").json()
     term_id = terms[0]["id"]
@@ -191,6 +196,7 @@ def test_focus_terminal_recovers_dead_original_terminal(mock_terminal, mock_par)
     resp = client.post(f"/api/tasks/{task_id}/terminals/{term_id}/focus")
     assert resp.status_code == 200
     mock_par.ensure_tmux_session.assert_called_with(task["par_label"], "par-ws-test-abc123", create=True)
+    mock_par.configure_tmux_session.assert_called_once_with("par-ws-recovered")
     mock_terminal.launch.assert_called_with(
         "par-ws-recovered",
         "Recover [main]",

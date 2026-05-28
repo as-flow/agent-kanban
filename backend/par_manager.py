@@ -5,13 +5,68 @@ from pathlib import Path
 from typing import Any
 
 from config import REPOS_DIRECTORY
+from process_env import GHOSTTY_TERMINFO, cleaned_child_env
 
 log = logging.getLogger(__name__)
+
+_TMUX_STRIP_ENV_KEYS = (
+    "NO_COLOR",
+    "FORCE_COLOR",
+    "CLICOLOR",
+    "CLICOLOR_FORCE",
+    "CI",
+)
+
+_TMUX_TERMINAL_FEATURES = (
+    "xterm-ghostty:RGB",
+    "xterm-ghostty:extkeys",
+)
 
 
 def _run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
     log.info("Running: %s", " ".join(cmd))
-    return subprocess.run(cmd, capture_output=True, text=True, check=check)
+    return subprocess.run(cmd, capture_output=True, text=True, check=check, env=cleaned_child_env())
+
+
+def _ensure_tmux_server_defaults():
+    """Configure tmux before Par creates panes, so new shells inherit sane defaults."""
+    _run(["tmux", "start-server"], check=False)
+    # Match the only known-good strict tmux Droid runtime from historical logs:
+    # Droid saw TERM=xterm-ghostty and TERM_PROGRAM=ghostty while multiplexer=tmux.
+    _run(["tmux", "set-option", "-gq", "default-terminal", "xterm-ghostty"], check=False)
+    _run(["tmux", "set-option", "-gq", "allow-passthrough", "on"], check=False)
+    _run(["tmux", "set-option", "-sq", "extended-keys", "always"], check=False)
+    _run(["tmux", "set-option", "-sq", "extended-keys-format", "csi-u"], check=False)
+    for key in _TMUX_STRIP_ENV_KEYS:
+        _run(["tmux", "set-environment", "-gu", key], check=False)
+    _run(["tmux", "set-environment", "-g", "COLORTERM", "truecolor"], check=False)
+    _run(["tmux", "set-environment", "-g", "TERMINFO_DIRS", GHOSTTY_TERMINFO], check=False)
+    _run(["tmux", "set-environment", "-g", "TERM_PROGRAM", "ghostty"], check=False)
+    for feature in _TMUX_TERMINAL_FEATURES:
+        _append_tmux_terminal_feature(feature)
+
+
+def _append_tmux_terminal_feature(feature: str):
+    result = _run(["tmux", "show-options", "-sv", "terminal-features"], check=False)
+    current = result.stdout.strip().split(",") if result.returncode == 0 else []
+    if feature in current:
+        return
+    prefix = "," if current and current != [""] else ""
+    _run(["tmux", "set-option", "-asq", "terminal-features", f"{prefix}{feature}"], check=False)
+
+
+def configure_tmux_session(session_name: str):
+    """Apply Droid-friendly tmux environment/options to a Par session."""
+    if not session_name:
+        return
+    _ensure_tmux_server_defaults()
+    for key in _TMUX_STRIP_ENV_KEYS:
+        _run(["tmux", "set-environment", "-t", session_name, "-u", key], check=False)
+    _run(["tmux", "set-environment", "-t", session_name, "COLORTERM", "truecolor"], check=False)
+    _run(["tmux", "set-environment", "-t", session_name, "TERMINFO_DIRS", GHOSTTY_TERMINFO], check=False)
+    _run(["tmux", "set-environment", "-t", session_name, "TERM_PROGRAM", "ghostty"], check=False)
+    _run(["tmux", "set-option", "-t", session_name, "-q", "default-terminal", "xterm-ghostty"], check=False)
+    _run(["tmux", "set-option", "-t", session_name, "-q", "allow-passthrough", "on"], check=False)
 
 
 def _par_state_path() -> Path:
@@ -45,12 +100,14 @@ def get_workspace_session(label: str) -> dict[str, Any] | None:
 def workspace_start(label: str, repos: list[str]) -> str:
     """Create a par workspace. Returns the tmux session name."""
     repos_csv = ",".join(repos)
+    _ensure_tmux_server_defaults()
     _run([
         "par", "workspace", "start", label,
         "--path", REPOS_DIRECTORY,
         "--repos", repos_csv,
     ])
-    return discover_tmux_session(label)
+    tmux_session = discover_tmux_session(label)
+    return tmux_session
 
 
 def workspace_rm(label: str):
@@ -122,6 +179,7 @@ def ensure_tmux_session(label: str, tmux_session: str | None = None, create: boo
     if not workspace_path:
         raise FileNotFoundError("Workspace directory not found")
 
+    _ensure_tmux_server_defaults()
     _run(["tmux", "new-session", "-d", "-s", canonical, "-c", workspace_path])
     return canonical
 

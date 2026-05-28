@@ -115,6 +115,60 @@ def workspace_rm(label: str):
     _run(["par", "rm", label], check=False)
 
 
+def _standalone_session_name(label: str) -> str:
+    return f"kanban-{label}"
+
+
+def _validate_working_dir(cwd: str) -> str:
+    if not cwd:
+        raise FileNotFoundError("REPOS_DIRECTORY is not configured")
+    path = Path(cwd)
+    if not path.is_dir():
+        raise FileNotFoundError(f"REPOS_DIRECTORY not found: {cwd}")
+    return str(path)
+
+
+def standalone_session_start(label: str, cwd: str) -> str:
+    """Create a standalone tmux session in a directory. Returns the session name."""
+    working_dir = _validate_working_dir(cwd)
+    session_name = _standalone_session_name(label)
+    _ensure_tmux_server_defaults()
+    _run(["tmux", "new-session", "-d", "-s", session_name, "-c", working_dir])
+    return session_name
+
+
+def ensure_standalone_session(
+    label: str,
+    tmux_session: str | None = None,
+    cwd: str = "",
+    create: bool = False,
+) -> str:
+    """Return a live standalone tmux session, recreating it when requested."""
+    candidates: list[str] = []
+    if tmux_session:
+        candidates.append(tmux_session)
+    discovered = discover_tmux_session(label)
+    if discovered and discovered not in candidates:
+        candidates.append(discovered)
+
+    for candidate in candidates:
+        if candidate and is_tmux_session_alive(candidate):
+            return candidate
+
+    canonical = tmux_session or _standalone_session_name(label)
+    if not create:
+        return canonical
+
+    return standalone_session_start(label, cwd)
+
+
+def kill_tmux_session(session_name: str | None):
+    """Kill a tmux session directly."""
+    if not session_name:
+        return
+    _run(["tmux", "kill-session", "-t", session_name], check=False)
+
+
 def send_command(label: str, command: str):
     """Send a command to a par session's tmux pane."""
     _run(["par", "send", label, command])

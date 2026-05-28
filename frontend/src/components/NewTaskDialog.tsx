@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { formatLastPulledLabel, LAST_PULLED_EVENT, readLastPulledAt } from '../lastPulled';
 import type { RepoGroup } from '../types';
@@ -8,6 +8,10 @@ interface Props {
   onClose: () => void;
   onCreated: () => void;
   onError: (msg: string) => void;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function NewTaskDialog({ onClose, onCreated, onError }: Props) {
@@ -21,6 +25,14 @@ export function NewTaskDialog({ onClose, onCreated, onError }: Props) {
   const [lastPulledLabel, setLastPulledLabel] = useState(() =>
     formatLastPulledLabel(readLastPulledAt()),
   );
+
+  const refreshGroups = useCallback(async () => {
+    try {
+      setGroups(await api.getRepoGroups());
+    } catch (e: unknown) {
+      onError(getErrorMessage(e));
+    }
+  }, [onError]);
 
   useEffect(() => {
     function syncLabel() {
@@ -38,17 +50,9 @@ export function NewTaskDialog({ onClose, onCreated, onError }: Props) {
     api
       .getRepos()
       .then((rows) => setAvailableRepos(rows.map((r) => r.name)))
-      .catch((e) => onError(e.message));
+      .catch((e: unknown) => onError(getErrorMessage(e)));
     refreshGroups();
-  }, [onError]);
-
-  async function refreshGroups() {
-    try {
-      setGroups(await api.getRepoGroups());
-    } catch (e: any) {
-      onError(e.message);
-    }
-  }
+  }, [onError, refreshGroups]);
 
   function toggleRepo(repo: string) {
     setSelectedRepos((prev) => {
@@ -74,13 +78,13 @@ export function NewTaskDialog({ onClose, onCreated, onError }: Props) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim() || selectedRepos.size === 0) return;
+    if (!title.trim()) return;
     setLoading(true);
     try {
       await api.createTask(title.trim(), [...selectedRepos]);
       onCreated();
-    } catch (err: any) {
-      onError(err.message);
+    } catch (err: unknown) {
+      onError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -142,7 +146,7 @@ export function NewTaskDialog({ onClose, onCreated, onError }: Props) {
 
           {availableRepos.length === 0 ? (
             <p className="text-xs text-gray-500 mb-4">
-              No repos found. Check REPOS_DIRECTORY in .env
+              No repos found in REPOS_DIRECTORY. You can still create a task; it will open there when started.
             </p>
           ) : (
             <>
@@ -181,7 +185,7 @@ export function NewTaskDialog({ onClose, onCreated, onError }: Props) {
             </button>
             <button
               type="submit"
-              disabled={loading || !title.trim() || selectedRepos.size === 0}
+              disabled={loading}
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-medium text-white transition-colors cursor-pointer"
             >
               {loading ? 'Creating...' : 'Create Task'}

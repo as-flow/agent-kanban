@@ -36,6 +36,9 @@ def mock_par():
     par_manager.get_pane_command = MagicMock(return_value="droid")
     par_manager.is_tmux_session_alive = MagicMock(return_value=True)
     par_manager.ensure_tmux_session = MagicMock(return_value="par-ws-test-abc123")
+    par_manager.standalone_session_start = MagicMock(return_value="kanban-test-abc123")
+    par_manager.ensure_standalone_session = MagicMock(return_value="kanban-test-abc123")
+    par_manager.kill_tmux_session = MagicMock()
     par_manager.configure_tmux_session = MagicMock()
     par_manager.get_workspace_path = MagicMock(return_value="/tmp/test-ws")
     yield par_manager
@@ -62,6 +65,14 @@ def test_create_task():
     assert data["color_bg"].startswith("#")
 
 
+def test_create_task_no_repos():
+    resp = client.post("/api/tasks", json={"title": "Triage inbox", "repos": []})
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["title"] == "Triage inbox"
+    assert data["repos"] == []
+
+
 def test_list_tasks():
     client.post("/api/tasks", json={"title": "Task 1", "repos": ["a"]})
     client.post("/api/tasks", json={"title": "Task 2", "repos": ["b"]})
@@ -84,6 +95,25 @@ def test_move_not_started_to_in_progress(mock_par, mock_terminal):
         "Start me [main]",
         resp.json()["color_fg"],
         resp.json()["color_bg"],
+    )
+
+
+def test_move_not_started_to_in_progress_no_repos(mock_par, mock_terminal):
+    resp = client.post("/api/tasks", json={"title": "Start no repos", "repos": []})
+    task = resp.json()
+
+    resp = client.patch(f"/api/tasks/{task['id']}/status", json={"status": "in_progress"})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "in_progress"
+    assert resp.json()["tmux_session"] == "kanban-test-abc123"
+    mock_par.workspace_start.assert_not_called()
+    mock_par.standalone_session_start.assert_called_once_with(task["par_label"], "/tmp/test-repos")
+    mock_par.configure_tmux_session.assert_called_once_with("kanban-test-abc123")
+    mock_terminal.launch.assert_called_once_with(
+        "kanban-test-abc123",
+        "Start no repos [main]",
+        task["color_fg"],
+        task["color_bg"],
     )
 
 
@@ -143,6 +173,18 @@ def test_delete_task(mock_par, mock_terminal):
 
     resp = client.get("/api/tasks")
     assert len(resp.json()) == 0
+
+
+def test_delete_task_no_repos(mock_par, mock_terminal):
+    resp = client.post("/api/tasks", json={"title": "Delete no repos", "repos": []})
+    task_id = resp.json()["id"]
+    client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
+
+    resp = client.delete(f"/api/tasks/{task_id}")
+    assert resp.status_code == 200
+    mock_terminal.kill.assert_called()
+    mock_par.workspace_rm.assert_not_called()
+    mock_par.kill_tmux_session.assert_called_once_with("kanban-test-abc123")
 
 
 def test_agent_status():

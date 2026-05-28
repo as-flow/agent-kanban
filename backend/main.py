@@ -223,7 +223,7 @@ def remove_done_tasks():
     for task in done_tasks:
         for term in get_terminals_for_task(task.id):
             terminal_manager.kill(term.pid)
-        par_manager.workspace_rm(task.par_label)
+        _remove_task_workspace(task)
         delete_task(task.id)
     return {"ok": True, "deleted": len(done_tasks)}
 
@@ -235,7 +235,7 @@ def remove_task(task_id: str):
         raise HTTPException(404, "Task not found")
     for term in get_terminals_for_task(task_id):
         terminal_manager.kill(term.pid)
-    par_manager.workspace_rm(task.par_label)
+    _remove_task_workspace(task)
     delete_task(task_id)
     return {"ok": True}
 
@@ -269,7 +269,7 @@ def add_terminal(task_id: str) -> TaskTerminal:
     task = get_task(task_id)
     if not task:
         raise HTTPException(404, "Task not found")
-    ws_path = par_manager.get_workspace_path(task.par_label)
+    ws_path = _task_working_dir(task)
     if not ws_path:
         raise HTTPException(400, "Workspace directory not found")
     short_id = _uuid.uuid4().hex[:6]
@@ -292,9 +292,14 @@ def focus_terminal(task_id: str, terminal_id: str) -> dict:
         win_title = term.title or (f"{task.title} [main]" if term.kind == "original" else f"{task.title} [{term.id[:6]}]")
         if term.kind == "original":
             try:
-                session_name = par_manager.ensure_tmux_session(
-                    task.par_label, task.tmux_session, create=True,
-                )
+                if task.repos:
+                    session_name = par_manager.ensure_tmux_session(
+                        task.par_label, task.tmux_session, create=True,
+                    )
+                else:
+                    session_name = par_manager.ensure_standalone_session(
+                        task.par_label, task.tmux_session, config.REPOS_DIRECTORY, create=True,
+                    )
             except FileNotFoundError as exc:
                 raise HTTPException(400, str(exc)) from exc
             if not session_name:
@@ -304,7 +309,7 @@ def focus_terminal(task_id: str, terminal_id: str) -> dict:
             par_manager.configure_tmux_session(session_name)
             pid = terminal_manager.launch(session_name, win_title, task.color_fg, task.color_bg)
         else:
-            ws_path = par_manager.get_workspace_path(task.par_label)
+            ws_path = _task_working_dir(task)
             if not ws_path:
                 raise HTTPException(400, "Workspace directory not found")
             pid = terminal_manager.launch_shell(ws_path, win_title, task.color_fg, task.color_bg)
@@ -329,7 +334,13 @@ def remove_terminal(task_id: str, terminal_id: str) -> dict:
 
 
 def _transition_to_in_progress(task: Task):
-    tmux_session = par_manager.workspace_start(task.par_label, task.repos)
+    try:
+        if task.repos:
+            tmux_session = par_manager.workspace_start(task.par_label, task.repos)
+        else:
+            tmux_session = par_manager.standalone_session_start(task.par_label, config.REPOS_DIRECTORY)
+    except FileNotFoundError as exc:
+        raise HTTPException(400, str(exc)) from exc
     par_manager.configure_tmux_session(tmux_session)
     update_task(task.id, tmux_session=tmux_session)
     _launch_original_terminal(task, tmux_session)
@@ -337,9 +348,14 @@ def _transition_to_in_progress(task: Task):
 
 def _restore_in_progress(task: Task):
     try:
-        tmux_session = par_manager.ensure_tmux_session(
-            task.par_label, task.tmux_session, create=True,
-        )
+        if task.repos:
+            tmux_session = par_manager.ensure_tmux_session(
+                task.par_label, task.tmux_session, create=True,
+            )
+        else:
+            tmux_session = par_manager.ensure_standalone_session(
+                task.par_label, task.tmux_session, config.REPOS_DIRECTORY, create=True,
+            )
     except FileNotFoundError as exc:
         raise HTTPException(400, str(exc)) from exc
     par_manager.configure_tmux_session(tmux_session)
@@ -354,6 +370,19 @@ def _launch_original_terminal(task: Task, tmux_session: str):
     pid = terminal_manager.launch(tmux_session, win_title, task.color_fg, task.color_bg)
     update_task(task.id, terminal_pid=pid)
     create_terminal(task.id, pid, kind="original", title=win_title)
+
+
+def _task_working_dir(task: Task) -> str:
+    if task.repos:
+        return par_manager.get_workspace_path(task.par_label)
+    return config.REPOS_DIRECTORY if Path(config.REPOS_DIRECTORY).is_dir() else ""
+
+
+def _remove_task_workspace(task: Task):
+    if task.repos:
+        par_manager.workspace_rm(task.par_label)
+    else:
+        par_manager.kill_tmux_session(task.tmux_session)
 
 
 def _transition_to_done(task: Task):

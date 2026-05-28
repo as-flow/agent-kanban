@@ -66,7 +66,7 @@ VALID_TRANSITIONS = {
     "in_progress": ["in_review", "on_hold", "done"],
     "in_review": ["in_progress", "on_hold", "done"],
     "on_hold": ["in_progress", "in_review", "done"],
-    "done": [],
+    "done": ["in_progress"],
 }
 
 
@@ -205,6 +205,8 @@ def update_status(task_id: str, body: TaskStatusUpdate) -> Task:
 
     if task.status == "not_started" and new_status == "in_progress":
         _transition_to_in_progress(task)
+    elif task.status == "done" and new_status == "in_progress":
+        _restore_in_progress(task)
     elif new_status == "done":
         _transition_to_done(task)
 
@@ -289,18 +291,17 @@ def focus_terminal(task_id: str, terminal_id: str) -> dict:
     else:
         win_title = term.title or (f"{task.title} [main]" if term.kind == "original" else f"{task.title} [{term.id[:6]}]")
         if term.kind == "original":
-            ws_path = par_manager.get_workspace_path(task.par_label)
-            if not ws_path:
-                raise HTTPException(400, "Workspace directory not found")
             try:
-                par_manager.ensure_tmux_session(
+                session_name = par_manager.ensure_tmux_session(
                     task.par_label, task.tmux_session, create=True,
                 )
             except FileNotFoundError as exc:
                 raise HTTPException(400, str(exc)) from exc
-            pid = terminal_manager.launch_shell(
-                ws_path, win_title, task.color_fg, task.color_bg,
-            )
+            if not session_name:
+                raise HTTPException(400, "Task has no tmux session")
+            if task.tmux_session != session_name:
+                update_task(task.id, tmux_session=session_name)
+            pid = terminal_manager.launch(session_name, win_title, task.color_fg, task.color_bg)
         else:
             ws_path = par_manager.get_workspace_path(task.par_label)
             if not ws_path:
@@ -329,15 +330,25 @@ def remove_terminal(task_id: str, terminal_id: str) -> dict:
 def _transition_to_in_progress(task: Task):
     tmux_session = par_manager.workspace_start(task.par_label, task.repos)
     update_task(task.id, tmux_session=tmux_session)
+    _launch_original_terminal(task, tmux_session)
 
-    ws_path = par_manager.get_workspace_path(task.par_label)
-    if not ws_path:
-        raise HTTPException(500, "Workspace directory not found")
 
+def _restore_in_progress(task: Task):
+    try:
+        tmux_session = par_manager.ensure_tmux_session(
+            task.par_label, task.tmux_session, create=True,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    update_task(task.id, tmux_session=tmux_session)
+    _launch_original_terminal(task, tmux_session)
+
+
+def _launch_original_terminal(task: Task, tmux_session: str):
+    if not tmux_session:
+        raise HTTPException(500, "Task has no tmux session")
     win_title = f"{task.title} [main]"
-    # Open a direct Ghostty shell in the workspace (not tmux attach) so droid gets
-    # full terminal capabilities. The par tmux session still exists for attach/shell terminals.
-    pid = terminal_manager.launch_shell(ws_path, win_title, task.color_fg, task.color_bg)
+    pid = terminal_manager.launch(tmux_session, win_title, task.color_fg, task.color_bg)
     update_task(task.id, terminal_pid=pid)
     create_terminal(task.id, pid, kind="original", title=win_title)
 

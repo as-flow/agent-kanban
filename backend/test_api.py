@@ -77,7 +77,12 @@ def test_move_not_started_to_in_progress(mock_par, mock_terminal):
     assert resp.status_code == 200
     assert resp.json()["status"] == "in_progress"
     mock_par.workspace_start.assert_called_once()
-    mock_terminal.launch_shell.assert_called_once()
+    mock_terminal.launch.assert_called_once_with(
+        "par-ws-test-abc123",
+        "Start me [main]",
+        resp.json()["color_fg"],
+        resp.json()["color_bg"],
+    )
 
 
 def test_invalid_transition():
@@ -97,6 +102,31 @@ def test_move_to_done_kills_terminal(mock_terminal):
     resp = client.patch(f"/api/tasks/{task_id}/status", json={"status": "done"})
     assert resp.status_code == 200
     mock_terminal.kill.assert_called()
+
+
+def test_move_done_to_in_progress_restores_session(mock_par, mock_terminal):
+    resp = client.post("/api/tasks", json={"title": "Restore", "repos": ["r"]})
+    task = resp.json()
+    task_id = task["id"]
+
+    client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
+    client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_review"})
+    client.patch(f"/api/tasks/{task_id}/status", json={"status": "done"})
+
+    mock_par.ensure_tmux_session.return_value = "par-ws-restored"
+    mock_terminal.launch.reset_mock()
+
+    resp = client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "in_progress"
+    assert resp.json()["tmux_session"] == "par-ws-restored"
+    mock_par.ensure_tmux_session.assert_called_with(task["par_label"], "par-ws-test-abc123", create=True)
+    mock_terminal.launch.assert_called_once_with(
+        "par-ws-restored",
+        "Restore [main]",
+        task["color_fg"],
+        task["color_bg"],
+    )
 
 
 def test_delete_task(mock_par, mock_terminal):
@@ -161,8 +191,8 @@ def test_focus_terminal_recovers_dead_original_terminal(mock_terminal, mock_par)
     resp = client.post(f"/api/tasks/{task_id}/terminals/{term_id}/focus")
     assert resp.status_code == 200
     mock_par.ensure_tmux_session.assert_called_with(task["par_label"], "par-ws-test-abc123", create=True)
-    mock_terminal.launch_shell.assert_called_with(
-        "/tmp/test-ws",
+    mock_terminal.launch.assert_called_with(
+        "par-ws-recovered",
         "Recover [main]",
         task["color_fg"],
         task["color_bg"],
@@ -213,7 +243,7 @@ def test_focus_terminal_returns_400_when_workspace_missing(mock_terminal, mock_p
     client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
 
     mock_terminal.is_alive.return_value = False
-    par_manager.get_workspace_path = MagicMock(return_value="")
+    mock_par.ensure_tmux_session.side_effect = FileNotFoundError("Workspace directory not found")
 
     terms = client.get(f"/api/tasks/{task_id}/terminals").json()
     term_id = terms[0]["id"]

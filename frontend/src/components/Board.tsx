@@ -19,7 +19,7 @@ const VALID_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   in_progress: ['in_review', 'on_hold', 'done'],
   in_review: ['in_progress', 'on_hold', 'done'],
   on_hold: ['in_progress', 'in_review', 'done'],
-  done: [],
+  done: ['in_progress'],
 };
 
 interface Props {

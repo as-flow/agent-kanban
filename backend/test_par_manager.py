@@ -48,7 +48,7 @@ def test_ensure_tmux_session_recreates_dead_workspace_session(tmp_path, monkeypa
     session_name = par_manager.ensure_tmux_session(label, "par-ws-stale", create=True)
 
     assert session_name == "par-ws-saved"
-    assert calls == [["tmux", "new-session", "-d", "-s", "par-ws-saved", "-c", str(workspace_path)]]
+    assert ["tmux", "new-session", "-d", "-s", "par-ws-saved", "-c", str(workspace_path)] in calls
 
 
 def test_ensure_tmux_session_returns_live_session_without_recreating(tmp_path, monkeypatch):

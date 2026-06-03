@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { formatLastPulledLabel, LAST_PULLED_EVENT, readLastPulledAt } from '../lastPulled';
 import type { RepoGroup } from '../types';
@@ -25,6 +25,7 @@ export function NewTaskDialog({ onClose, onCreated, onError }: Props) {
   const [lastPulledLabel, setLastPulledLabel] = useState(() =>
     formatLastPulledLabel(readLastPulledAt()),
   );
+  const availableRepoSet = useMemo(() => new Set(availableRepos), [availableRepos]);
 
   const refreshGroups = useCallback(async () => {
     try {
@@ -66,11 +67,12 @@ export function NewTaskDialog({ onClose, onCreated, onError }: Props) {
   function toggleGroup(group: RepoGroup) {
     setSelectedRepos((prev) => {
       const next = new Set(prev);
-      const allSelected = group.repos.every((r) => next.has(r));
+      const selectableRepos = group.repos.filter((repo) => availableRepoSet.has(repo));
+      const allSelected = selectableRepos.length > 0 && selectableRepos.every((r) => next.has(r));
       if (allSelected) {
-        group.repos.forEach((r) => next.delete(r));
+        selectableRepos.forEach((r) => next.delete(r));
       } else {
-        group.repos.forEach((r) => next.add(r));
+        selectableRepos.forEach((r) => next.add(r));
       }
       return next;
     });
@@ -124,7 +126,8 @@ export function NewTaskDialog({ onClose, onCreated, onError }: Props) {
           {groups.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-3">
               {groups.map((g) => {
-                const allSelected = g.repos.every((r) => selectedRepos.has(r));
+                const selectableRepos = g.repos.filter((repo) => availableRepoSet.has(repo));
+                const allSelected = selectableRepos.length > 0 && selectableRepos.every((r) => selectedRepos.has(r));
                 return (
                   <button
                     key={g.id}

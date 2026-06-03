@@ -4,6 +4,7 @@ Run with: python -m pytest test_api.py -v
 """
 
 import os
+import subprocess
 from unittest.mock import MagicMock
 
 import pytest
@@ -12,6 +13,7 @@ from fastapi.testclient import TestClient
 os.environ["REPOS_DIRECTORY"] = "/tmp/test-repos"
 os.environ["DROID_AUTO_LEVEL"] = "medium"
 
+import config  # noqa: E402
 import par_manager  # noqa: E402
 import terminal_manager  # noqa: E402
 from main import app  # noqa: E402
@@ -23,7 +25,12 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def fresh_db(tmp_path, monkeypatch):
     db = tmp_path / "kanban.db"
+    repos_dir = tmp_path / "repos"
+    repos_dir.mkdir()
+    for repo in ("r", "repo1"):
+        (repos_dir / repo).mkdir()
     monkeypatch.setattr("models.DB_PATH", db)
+    monkeypatch.setattr("config.REPOS_DIRECTORY", str(repos_dir))
     init_db()
     yield
 
@@ -107,7 +114,7 @@ def test_move_not_started_to_in_progress_no_repos(mock_par, mock_terminal):
     assert resp.json()["status"] == "in_progress"
     assert resp.json()["tmux_session"] == "kanban-test-abc123"
     mock_par.workspace_start.assert_not_called()
-    mock_par.standalone_session_start.assert_called_once_with(task["par_label"], "/tmp/test-repos")
+    mock_par.standalone_session_start.assert_called_once_with(task["par_label"], config.REPOS_DIRECTORY)
     mock_par.configure_tmux_session.assert_called_once_with("kanban-test-abc123")
     mock_terminal.launch.assert_called_once_with(
         "kanban-test-abc123",
@@ -115,6 +122,34 @@ def test_move_not_started_to_in_progress_no_repos(mock_par, mock_terminal):
         task["color_fg"],
         task["color_bg"],
     )
+
+
+def test_move_to_in_progress_returns_400_for_missing_repos(mock_par, mock_terminal):
+    resp = client.post("/api/tasks", json={"title": "Missing repo", "repos": ["missing-repo"]})
+    task_id = resp.json()["id"]
+
+    resp = client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Repositories not found in REPOS_DIRECTORY: missing-repo"
+    mock_par.workspace_start.assert_not_called()
+    mock_terminal.launch.assert_not_called()
+
+
+def test_move_to_in_progress_returns_400_for_par_failure(mock_par, mock_terminal):
+    mock_par.workspace_start.side_effect = subprocess.CalledProcessError(
+        1,
+        ["par", "workspace", "start"],
+        stderr="par workspace failed",
+    )
+    resp = client.post("/api/tasks", json={"title": "Par failure", "repos": ["repo1"]})
+    task_id = resp.json()["id"]
+
+    resp = client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Failed to start task workspace: par workspace failed"
+    mock_terminal.launch.assert_not_called()
 
 
 def test_invalid_transition():
@@ -133,6 +168,17 @@ def test_move_to_done_kills_terminal(mock_terminal):
     client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_review"})
     resp = client.patch(f"/api/tasks/{task_id}/status", json={"status": "done"})
     assert resp.status_code == 200
+    mock_terminal.kill.assert_called()
+
+
+def test_move_to_on_hold_kills_terminal(mock_terminal):
+    resp = client.post("/api/tasks", json={"title": "Pause", "repos": ["r"]})
+    task_id = resp.json()["id"]
+
+    client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
+    resp = client.patch(f"/api/tasks/{task_id}/status", json={"status": "on_hold"})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "on_hold"
     mock_terminal.kill.assert_called()
 
 
@@ -158,6 +204,32 @@ def test_move_done_to_in_progress_restores_session(mock_par, mock_terminal):
     mock_terminal.launch.assert_called_once_with(
         "par-ws-restored",
         "Restore [main]",
+        task["color_fg"],
+        task["color_bg"],
+    )
+
+
+def test_move_on_hold_to_in_progress_restores_session(mock_par, mock_terminal):
+    resp = client.post("/api/tasks", json={"title": "Resume", "repos": ["r"]})
+    task = resp.json()
+    task_id = task["id"]
+
+    client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
+    client.patch(f"/api/tasks/{task_id}/status", json={"status": "on_hold"})
+
+    mock_par.ensure_tmux_session.return_value = "par-ws-resumed"
+    mock_terminal.launch.reset_mock()
+    mock_par.configure_tmux_session.reset_mock()
+
+    resp = client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "in_progress"
+    assert resp.json()["tmux_session"] == "par-ws-resumed"
+    mock_par.ensure_tmux_session.assert_called_with(task["par_label"], "par-ws-test-abc123", create=True)
+    mock_par.configure_tmux_session.assert_called_once_with("par-ws-resumed")
+    mock_terminal.launch.assert_called_once_with(
+        "par-ws-resumed",
+        "Resume [main]",
         task["color_fg"],
         task["color_bg"],
     )

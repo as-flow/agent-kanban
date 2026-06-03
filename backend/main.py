@@ -207,6 +207,10 @@ def update_status(task_id: str, body: TaskStatusUpdate) -> Task:
         _transition_to_in_progress(task)
     elif task.status == "done" and new_status == "in_progress":
         _restore_in_progress(task)
+    elif task.status == "on_hold" and new_status in ("in_progress", "in_review"):
+        _restore_in_progress(task)
+    elif new_status == "on_hold":
+        _close_terminals(task)
     elif new_status == "done":
         _transition_to_done(task)
 
@@ -335,19 +339,23 @@ def remove_terminal(task_id: str, terminal_id: str) -> dict:
 
 def _transition_to_in_progress(task: Task):
     try:
+        _validate_task_repos(task)
         if task.repos:
             tmux_session = par_manager.workspace_start(task.par_label, task.repos)
         else:
             tmux_session = par_manager.standalone_session_start(task.par_label, config.REPOS_DIRECTORY)
+        par_manager.configure_tmux_session(tmux_session)
+        update_task(task.id, tmux_session=tmux_session)
+        _launch_original_terminal(task, tmux_session)
     except FileNotFoundError as exc:
         raise HTTPException(400, str(exc)) from exc
-    par_manager.configure_tmux_session(tmux_session)
-    update_task(task.id, tmux_session=tmux_session)
-    _launch_original_terminal(task, tmux_session)
+    except subprocess.CalledProcessError as exc:
+        raise HTTPException(400, _process_error_detail("Failed to start task workspace", exc)) from exc
 
 
 def _restore_in_progress(task: Task):
     try:
+        _validate_task_repos(task)
         if task.repos:
             tmux_session = par_manager.ensure_tmux_session(
                 task.par_label, task.tmux_session, create=True,
@@ -356,11 +364,32 @@ def _restore_in_progress(task: Task):
             tmux_session = par_manager.ensure_standalone_session(
                 task.par_label, task.tmux_session, config.REPOS_DIRECTORY, create=True,
             )
+        par_manager.configure_tmux_session(tmux_session)
+        update_task(task.id, tmux_session=tmux_session)
+        _launch_original_terminal(task, tmux_session)
     except FileNotFoundError as exc:
         raise HTTPException(400, str(exc)) from exc
-    par_manager.configure_tmux_session(tmux_session)
-    update_task(task.id, tmux_session=tmux_session)
-    _launch_original_terminal(task, tmux_session)
+    except subprocess.CalledProcessError as exc:
+        raise HTTPException(400, _process_error_detail("Failed to restore task workspace", exc)) from exc
+
+
+def _validate_task_repos(task: Task):
+    if not task.repos:
+        return
+    repos_dir = Path(config.REPOS_DIRECTORY)
+    if not repos_dir.is_dir():
+        raise HTTPException(400, f"REPOS_DIRECTORY not found: {config.REPOS_DIRECTORY}")
+    missing = sorted({repo for repo in task.repos if not (repos_dir / repo).is_dir()})
+    if missing:
+        raise HTTPException(
+            400,
+            f"Repositories not found in REPOS_DIRECTORY: {', '.join(missing)}",
+        )
+
+
+def _process_error_detail(prefix: str, exc: subprocess.CalledProcessError) -> str:
+    output = "\n".join(part.strip() for part in (exc.stderr, exc.stdout) if part and part.strip())
+    return f"{prefix}: {output or str(exc)}"
 
 
 def _launch_original_terminal(task: Task, tmux_session: str):
@@ -386,6 +415,10 @@ def _remove_task_workspace(task: Task):
 
 
 def _transition_to_done(task: Task):
+    _close_terminals(task)
+
+
+def _close_terminals(task: Task):
     for term in get_terminals_for_task(task.id):
         terminal_manager.kill(term.pid)
         delete_terminal(term.id)

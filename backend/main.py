@@ -205,11 +205,11 @@ def update_status(task_id: str, body: TaskStatusUpdate) -> Task:
 
     if task.status == "not_started" and new_status == "in_progress":
         _transition_to_in_progress(task)
-    elif task.status == "done" and new_status == "in_progress":
+    elif new_status == "in_progress" and task.status in ("done", "on_hold", "in_review"):
         _restore_in_progress(task)
-    elif task.status == "on_hold" and new_status in ("in_progress", "in_review"):
-        _restore_in_progress(task)
-    elif new_status == "on_hold":
+    elif (task.status == "in_progress" and new_status == "in_review") or (
+        new_status == "on_hold" and task.status != "in_review"
+    ):
         _close_terminals(task)
     elif new_status == "done":
         _transition_to_done(task)

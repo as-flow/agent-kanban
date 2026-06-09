@@ -182,6 +182,17 @@ def test_move_to_on_hold_kills_terminal(mock_terminal):
     mock_terminal.kill.assert_called()
 
 
+def test_move_in_progress_to_in_review_kills_terminal(mock_terminal):
+    resp = client.post("/api/tasks", json={"title": "Review", "repos": ["r"]})
+    task_id = resp.json()["id"]
+
+    client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
+    resp = client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_review"})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "in_review"
+    mock_terminal.kill.assert_called()
+
+
 def test_move_done_to_in_progress_restores_session(mock_par, mock_terminal):
     resp = client.post("/api/tasks", json={"title": "Restore", "repos": ["r"]})
     task = resp.json()
@@ -233,6 +244,46 @@ def test_move_on_hold_to_in_progress_restores_session(mock_par, mock_terminal):
         task["color_fg"],
         task["color_bg"],
     )
+
+
+def test_move_in_review_to_in_progress_restores_session(mock_par, mock_terminal):
+    resp = client.post("/api/tasks", json={"title": "Revive", "repos": ["r"]})
+    task = resp.json()
+    task_id = task["id"]
+
+    client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
+    client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_review"})
+
+    mock_par.ensure_tmux_session.return_value = "par-ws-reviewed"
+    mock_terminal.launch.reset_mock()
+    mock_par.configure_tmux_session.reset_mock()
+
+    resp = client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "in_progress"
+    assert resp.json()["tmux_session"] == "par-ws-reviewed"
+    mock_par.ensure_tmux_session.assert_called_with(task["par_label"], "par-ws-test-abc123", create=True)
+    mock_par.configure_tmux_session.assert_called_once_with("par-ws-reviewed")
+    mock_terminal.launch.assert_called_once_with(
+        "par-ws-reviewed",
+        "Revive [main]",
+        task["color_fg"],
+        task["color_bg"],
+    )
+
+
+def test_move_in_review_to_on_hold_does_not_kill_terminal(mock_terminal):
+    resp = client.post("/api/tasks", json={"title": "Quiet hold", "repos": ["r"]})
+    task_id = resp.json()["id"]
+
+    client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_progress"})
+    client.patch(f"/api/tasks/{task_id}/status", json={"status": "in_review"})
+    mock_terminal.kill.reset_mock()
+
+    resp = client.patch(f"/api/tasks/{task_id}/status", json={"status": "on_hold"})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "on_hold"
+    mock_terminal.kill.assert_not_called()
 
 
 def test_delete_task(mock_par, mock_terminal):

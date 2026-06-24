@@ -1,5 +1,4 @@
 import json
-import random
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -8,6 +7,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from config import DB_PATH
+from color_utils import pick_most_distinct_color
 
 COLOR_PALETTE = [
     {"fg": "#f8f8f2", "bg": "#1a1a2e"},
@@ -207,8 +207,7 @@ def _pick_color() -> dict:
         ).fetchall()
     }
     conn.close()
-    available = [c for c in COLOR_PALETTE if c["bg"] not in used]
-    return random.choice(available) if available else random.choice(COLOR_PALETTE)
+    return pick_most_distinct_color(COLOR_PALETTE, used)
 
 
 def create_task(data: TaskCreate) -> Task:

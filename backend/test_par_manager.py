@@ -83,3 +83,38 @@ def test_ensure_tmux_session_raises_when_workspace_missing(tmp_path, monkeypatch
 
     with pytest.raises(FileNotFoundError, match="Workspace directory not found"):
         par_manager.ensure_tmux_session(label, "par-ws-stale", create=True)
+
+
+def test_resolve_live_session_returns_known_live_session_without_discovery(monkeypatch):
+    checks = []
+
+    def fake_is_alive(session_name: str):
+        checks.append(session_name)
+        return True
+
+    def fail_discover(label: str):
+        raise AssertionError(f"discover_tmux_session should not be called for {label}")
+
+    monkeypatch.setattr(par_manager, "is_tmux_session_alive", fake_is_alive)
+    monkeypatch.setattr(par_manager, "discover_tmux_session", fail_discover)
+
+    session_name = par_manager.resolve_live_session("magic-mode", "par-ws-saved")
+
+    assert session_name == "par-ws-saved"
+    assert checks == ["par-ws-saved"]
+
+
+def test_resolve_live_session_discovers_when_known_session_is_dead(monkeypatch):
+    checks = []
+
+    def fake_is_alive(session_name: str):
+        checks.append(session_name)
+        return session_name == "par-ws-discovered"
+
+    monkeypatch.setattr(par_manager, "is_tmux_session_alive", fake_is_alive)
+    monkeypatch.setattr(par_manager, "discover_tmux_session", lambda _label: "par-ws-discovered")
+
+    session_name = par_manager.resolve_live_session("magic-mode", "par-ws-stale")
+
+    assert session_name == "par-ws-discovered"
+    assert checks == ["par-ws-stale", "par-ws-discovered"]

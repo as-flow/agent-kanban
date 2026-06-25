@@ -24,7 +24,7 @@ _TMUX_TERMINAL_FEATURES = (
 
 
 def _run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
-    log.info("Running: %s", " ".join(cmd))
+    log.debug("Running: %s", " ".join(cmd))
     return subprocess.run(cmd, capture_output=True, text=True, check=check, env=cleaned_child_env())
 
 
@@ -176,13 +176,18 @@ def send_command(label: str, command: str):
 
 def discover_tmux_session(label: str) -> str:
     """Find the tmux session name for a par label by listing sessions."""
-    result = _run(["tmux", "list-sessions", "-F", "#{session_name}"], check=False)
-    if result.returncode != 0:
-        return f"par-ws-{label}"
-    for line in result.stdout.strip().splitlines():
+    for line in list_tmux_sessions():
         if label in line:
             return line.strip()
     return f"par-ws-{label}"
+
+
+def list_tmux_sessions() -> list[str]:
+    """Return currently known tmux session names."""
+    result = _run(["tmux", "list-sessions", "-F", "#{session_name}"], check=False)
+    if result.returncode != 0:
+        return []
+    return [line.strip() for line in result.stdout.strip().splitlines() if line.strip()]
 
 
 def get_workspace_path(label: str) -> str:
@@ -204,6 +209,32 @@ def get_workspace_path(label: str) -> str:
 def is_tmux_session_alive(session_name: str) -> bool:
     result = _run(["tmux", "has-session", "-t", session_name], check=False)
     return result.returncode == 0
+
+
+def resolve_live_session(label: str, tmux_session: str | None = None) -> str:
+    """Return a live session for status checks without recreating workspaces."""
+    if tmux_session and is_tmux_session_alive(tmux_session):
+        return tmux_session
+
+    discovered = discover_tmux_session(label)
+    if discovered and discovered != tmux_session and is_tmux_session_alive(discovered):
+        return discovered
+
+    return ""
+
+
+def resolve_live_session_from_sessions(
+    label: str,
+    tmux_session: str | None,
+    live_sessions: set[str],
+) -> str:
+    """Resolve a task session from a preloaded tmux session set."""
+    if tmux_session and tmux_session in live_sessions:
+        return tmux_session
+    for session_name in live_sessions:
+        if label in session_name:
+            return session_name
+    return ""
 
 
 def ensure_tmux_session(label: str, tmux_session: str | None = None, create: bool = False) -> str:

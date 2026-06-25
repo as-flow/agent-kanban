@@ -244,13 +244,39 @@ def remove_task(task_id: str):
     return {"ok": True}
 
 
+@app.get("/api/tasks/agent-status")
+def agent_statuses(ids: str = "") -> dict:
+    task_ids = [task_id.strip() for task_id in ids.split(",") if task_id.strip()]
+    tasks = []
+    for task_id in task_ids:
+        task = get_task(task_id)
+        if not task:
+            raise HTTPException(404, "Task not found")
+        tasks.append(task)
+
+    live_sessions = set(par_manager.list_tmux_sessions())
+    statuses = {}
+    for task in tasks:
+        session_name = par_manager.resolve_live_session_from_sessions(
+            task.par_label,
+            task.tmux_session,
+            live_sessions,
+        )
+        statuses[task.id] = _agent_status_response(session_name)
+    return statuses
+
+
 @app.get("/api/tasks/{task_id}/agent-status")
 def agent_status(task_id: str) -> dict:
     task = get_task(task_id)
     if not task:
         raise HTTPException(404, "Task not found")
-    session_name = par_manager.ensure_tmux_session(task.par_label, task.tmux_session, create=False)
-    if not session_name or not par_manager.is_tmux_session_alive(session_name):
+    session_name = par_manager.resolve_live_session(task.par_label, task.tmux_session)
+    return _agent_status_response(session_name)
+
+
+def _agent_status_response(session_name: str) -> dict:
+    if not session_name:
         return {"running": False, "command": ""}
     cmd = par_manager.get_pane_command(session_name)
     return {"running": "droid" in cmd.lower(), "command": cmd}

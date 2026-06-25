@@ -7,8 +7,9 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
+import { getErrorMessage } from '../errorMessage';
 import type { Task, TaskStatus } from '../types';
 import { COLUMNS } from '../types';
 import { Column } from './Column';
@@ -31,7 +32,39 @@ interface Props {
 export function Board({ tasks, onRefresh, onError }: Props) {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [clearingDone, setClearingDone] = useState(false);
+  const [agentRunningByTask, setAgentRunningByTask] = useState<Record<string, boolean>>({});
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const activeTaskIds = useMemo(
+    () => tasks
+      .filter((task) => task.status === 'in_progress' || task.status === 'in_review' || task.status === 'on_hold')
+      .map((task) => task.id),
+    [tasks],
+  );
+
+  useEffect(() => {
+    if (activeTaskIds.length === 0) {
+      setAgentRunningByTask({});
+      return;
+    }
+
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const statuses = await api.getAgentStatuses(activeTaskIds);
+        if (cancelled) return;
+        setAgentRunningByTask(Object.fromEntries(
+          Object.entries(statuses).map(([id, status]) => [id, status.running]),
+        ));
+      } catch { /* ignore */ }
+    };
+
+    poll();
+    const interval = setInterval(poll, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [activeTaskIds]);
 
   function handleDragStart(event: DragStartEvent) {
     const task = tasks.find((t) => t.id === event.active.id);
@@ -43,8 +76,8 @@ export function Board({ tasks, onRefresh, onError }: Props) {
     try {
       await api.deleteAllDone();
       onRefresh();
-    } catch (e: any) {
-      onError(e.message);
+    } catch (error) {
+      onError(getErrorMessage(error));
     } finally {
       setClearingDone(false);
     }
@@ -70,8 +103,8 @@ export function Board({ tasks, onRefresh, onError }: Props) {
     try {
       await api.updateStatus(task.id, targetStatus);
       onRefresh();
-    } catch (e: any) {
-      onError(e.message);
+    } catch (error) {
+      onError(getErrorMessage(error));
     }
   }
 
@@ -84,6 +117,7 @@ export function Board({ tasks, onRefresh, onError }: Props) {
             id={col.id}
             label={col.label}
             tasks={tasks.filter((t) => t.status === col.id)}
+            agentRunningByTask={agentRunningByTask}
             onRefresh={onRefresh}
             onError={onError}
             {...(col.id === 'done' ? { onDeleteAll: handleDeleteAllDone, isClearingAll: clearingDone } : {})}
@@ -91,7 +125,15 @@ export function Board({ tasks, onRefresh, onError }: Props) {
         ))}
       </div>
       <DragOverlay>
-        {activeTask ? <TaskTile task={activeTask} overlay onRefresh={onRefresh} onError={onError} /> : null}
+        {activeTask ? (
+          <TaskTile
+            task={activeTask}
+            overlay
+            agentRunning={agentRunningByTask[activeTask.id] ?? false}
+            onRefresh={onRefresh}
+            onError={onError}
+          />
+        ) : null}
       </DragOverlay>
     </DndContext>
   );

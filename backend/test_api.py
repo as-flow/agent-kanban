@@ -42,6 +42,9 @@ def mock_par():
     par_manager.send_command = MagicMock()
     par_manager.get_pane_command = MagicMock(return_value="droid")
     par_manager.is_tmux_session_alive = MagicMock(return_value=True)
+    par_manager.resolve_live_session = MagicMock(return_value="par-ws-test-abc123")
+    par_manager.list_tmux_sessions = MagicMock(return_value=["par-ws-test-abc123"])
+    par_manager.resolve_live_session_from_sessions = MagicMock(return_value="par-ws-test-abc123")
     par_manager.ensure_tmux_session = MagicMock(return_value="par-ws-test-abc123")
     par_manager.standalone_session_start = MagicMock(return_value="kanban-test-abc123")
     par_manager.ensure_standalone_session = MagicMock(return_value="kanban-test-abc123")
@@ -318,6 +321,24 @@ def test_agent_status():
     resp = client.get(f"/api/tasks/{task_id}/agent-status")
     assert resp.status_code == 200
     assert resp.json()["running"] is True
+
+
+def test_batch_agent_status(mock_par):
+    first = client.post("/api/tasks", json={"title": "Check one", "repos": ["r"]}).json()
+    second = client.post("/api/tasks", json={"title": "Check two", "repos": ["r"]}).json()
+    client.patch(f"/api/tasks/{first['id']}/status", json={"status": "in_progress"})
+    client.patch(f"/api/tasks/{second['id']}/status", json={"status": "in_progress"})
+
+    mock_par.get_pane_command.side_effect = ["droid", "bash"]
+
+    resp = client.get(f"/api/tasks/agent-status?ids={first['id']},{second['id']}")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data[first["id"]] == {"running": True, "command": "droid"}
+    assert data[second["id"]] == {"running": False, "command": "bash"}
+    mock_par.list_tmux_sessions.assert_called_once()
+    assert mock_par.resolve_live_session_from_sessions.call_count == 2
 
 
 def test_list_terminals_after_start(mock_terminal):

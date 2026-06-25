@@ -40,6 +40,9 @@ export const api = {
   getAgentStatus: (id: string) =>
     request<AgentStatus>(`/tasks/${id}/agent-status`),
 
+  getAgentStatuses: (ids: string[]) =>
+    request<Record<string, AgentStatus>>(`/tasks/agent-status?ids=${encodeURIComponent(ids.join(','))}`),
+
   getTerminals: (taskId: string) =>
     request<TaskTerminal[]>(`/tasks/${taskId}/terminals`),
 

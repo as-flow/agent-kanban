@@ -6,13 +6,23 @@ interface Props {
   id: TaskStatus;
   label: string;
   tasks: Task[];
+  agentRunningByTask: Record<string, boolean>;
   onRefresh: () => void;
   onError: (msg: string) => void;
   onDeleteAll?: () => void;
   isClearingAll?: boolean;
 }
 
-export function Column({ id, label, tasks, onRefresh, onError, onDeleteAll, isClearingAll }: Props) {
+export function Column({
+  id,
+  label,
+  tasks,
+  agentRunningByTask,
+  onRefresh,
+  onError,
+  onDeleteAll,
+  isClearingAll,
+}: Props) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
   return (
@@ -67,7 +77,13 @@ export function Column({ id, label, tasks, onRefresh, onError, onDeleteAll, isCl
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {tasks.map((task) => (
-          <TaskTile key={task.id} task={task} onRefresh={onRefresh} onError={onError} />
+          <TaskTile
+            key={task.id}
+            task={task}
+            agentRunning={agentRunningByTask[task.id] ?? false}
+            onRefresh={onRefresh}
+            onError={onError}
+          />
         ))}
       </div>
     </div>

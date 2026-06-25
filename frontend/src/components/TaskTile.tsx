@@ -1,12 +1,14 @@
 import { useDraggable } from '@dnd-kit/core';
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
+import { getErrorMessage } from '../errorMessage';
 import type { Task, TaskTerminal } from '../types';
 import { useTheme } from '../useTheme';
 
 interface Props {
   task: Task;
   overlay?: boolean;
+  agentRunning?: boolean;
   onRefresh: () => void;
   onError: (msg: string) => void;
 }
@@ -26,9 +28,8 @@ function mixWithWhite(hex: string, amount: number) {
   return `#${mixed}`;
 }
 
-export function TaskTile({ task, overlay, onRefresh, onError }: Props) {
+export function TaskTile({ task, overlay, agentRunning = false, onRefresh, onError }: Props) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: task.id });
-  const [agentRunning, setAgentRunning] = useState(false);
   const [terminals, setTerminals] = useState<TaskTerminal[]>([]);
   const { theme } = useTheme();
   const accentColor = theme === 'dark' ? task.color_bg : mixWithWhite(task.color_bg, 0.35);
@@ -44,23 +45,25 @@ export function TaskTile({ task, overlay, onRefresh, onError }: Props) {
   }, [task.id, isActive]);
 
   useEffect(() => {
-    refreshTerminals();
-  }, [refreshTerminals]);
+    if (!isActive) {
+      return;
+    }
 
-  useEffect(() => {
-    if (!isActive) return;
     let cancelled = false;
-    const poll = async () => {
-      try {
-        const st = await api.getAgentStatus(task.id);
-        if (!cancelled) setAgentRunning(st.running);
-      } catch { /* ignore */ }
-    };
-    poll();
-    const interval = setInterval(poll, 5000);
+
+    api
+      .getTerminals(task.id)
+      .then((items) => {
+        if (!cancelled) {
+          setTerminals(items);
+        }
+      })
+      .catch(() => {
+        /* ignore */
+      });
+
     return () => {
       cancelled = true;
-      clearInterval(interval);
     };
   }, [task.id, isActive]);
 
@@ -68,8 +71,8 @@ export function TaskTile({ task, overlay, onRefresh, onError }: Props) {
     try {
       await api.focusTerminal(task.id, termId);
       await refreshTerminals();
-    } catch (e: any) {
-      onError(e.message);
+    } catch (error) {
+      onError(getErrorMessage(error));
     }
   }
 
@@ -77,8 +80,8 @@ export function TaskTile({ task, overlay, onRefresh, onError }: Props) {
     try {
       await api.addTerminal(task.id);
       await refreshTerminals();
-    } catch (e: any) {
-      onError(e.message);
+    } catch (error) {
+      onError(getErrorMessage(error));
     }
   }
 
@@ -86,8 +89,8 @@ export function TaskTile({ task, overlay, onRefresh, onError }: Props) {
     try {
       await api.deleteTerminal(task.id, termId);
       await refreshTerminals();
-    } catch (e: any) {
-      onError(e.message);
+    } catch (error) {
+      onError(getErrorMessage(error));
     }
   }
 
@@ -96,8 +99,8 @@ export function TaskTile({ task, overlay, onRefresh, onError }: Props) {
     try {
       await api.deleteTask(task.id);
       onRefresh();
-    } catch (e: any) {
-      onError(e.message);
+    } catch (error) {
+      onError(getErrorMessage(error));
     }
   }
 

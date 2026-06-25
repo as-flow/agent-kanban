@@ -1,6 +1,8 @@
 import os
+import shutil
 
 GHOSTTY_TERMINFO = "/Applications/Ghostty.app/Contents/Resources/terminfo"
+_GH_PATH = shutil.which("gh")
 
 _STRIP_ENV_KEYS = frozenset({
     "NO_COLOR",
@@ -25,3 +27,22 @@ def cleaned_child_env() -> dict[str, str]:
             f"{GHOSTTY_TERMINFO}:{existing}" if existing else GHOSTTY_TERMINFO
         )
     return env
+
+
+def git_subprocess_env() -> dict[str, str]:
+    """Environment for non-interactive git subprocesses from the kanban backend."""
+    env = os.environ.copy()
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    return env
+
+
+def git_pull_argv() -> list[str]:
+    """git pull argv; uses gh for HTTPS credentials when the gh CLI is available."""
+    cmd = ["git"]
+    if _GH_PATH:
+        cmd.extend([
+            "-c", "credential.helper=",
+            "-c", "credential.helper=!gh auth git-credential",
+        ])
+    cmd.append("pull")
+    return cmd

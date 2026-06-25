@@ -5,6 +5,7 @@ Run with: python -m pytest test_api.py -v
 
 import os
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -499,3 +500,25 @@ def test_update_settings_partial():
     resp = client.put("/api/settings", json={"terminal_path": "/usr/local/bin/ghostty"})
     assert resp.status_code == 200
     assert resp.json()["terminal_path"] == "/usr/local/bin/ghostty"
+
+
+def test_pull_all_repos(monkeypatch):
+    repos_dir = Path(config.REPOS_DIRECTORY)
+    for repo in ("r", "repo1"):
+        (repos_dir / repo / ".git").mkdir(parents=True, exist_ok=True)
+
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, "Already up to date.", "")
+
+    monkeypatch.setattr("main.subprocess.run", fake_run)
+
+    resp = client.post("/api/repos/pull")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 2
+    assert all(item["ok"] for item in data)
+    assert all(call[0] == "git" and call[-1] == "pull" for call in calls)
+

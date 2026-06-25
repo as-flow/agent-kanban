@@ -12,6 +12,7 @@ from pydantic import BaseModel
 import config
 import terminal_manager
 import par_manager
+from process_env import git_pull_argv, git_subprocess_env
 from models import (
     RepoGroup,
     RepoGroupCreate,
@@ -117,14 +118,23 @@ def _git_repos() -> list[Path]:
 def _pull_one(repo_path: Path) -> dict:
     try:
         result = subprocess.run(
-            ["git", "pull"], cwd=repo_path, capture_output=True, text=True, timeout=60,
+            git_pull_argv(),
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env=git_subprocess_env(),
         )
+        output = (result.stdout + result.stderr).strip()
+        if result.returncode != 0:
+            log.warning("git pull failed for %s: %s", repo_path.name, output)
         return {
             "repo": repo_path.name,
             "ok": result.returncode == 0,
-            "output": (result.stdout + result.stderr).strip(),
+            "output": output,
         }
     except Exception as exc:
+        log.warning("git pull failed for %s: %s", repo_path.name, exc)
         return {"repo": repo_path.name, "ok": False, "output": str(exc)}
 
 
@@ -133,7 +143,8 @@ def pull_all_repos() -> list[dict]:
     repos = _git_repos()
     if not repos:
         raise HTTPException(400, f"No git repos found in {config.REPOS_DIRECTORY}")
-    with ThreadPoolExecutor(max_workers=len(repos)) as pool:
+    max_workers = min(8, len(repos))
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
         return list(pool.map(_pull_one, repos))
 
 
